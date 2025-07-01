@@ -160,13 +160,13 @@ const Profile: React.FC = () => {
             <VStack align="end" spacing={4} minW="200px">
               <Box textAlign="right">
                 <Text fontSize="sm" color="gray.600" _dark={{ color: 'gray.400' }} mb={1}>
-                  剩余积分
+                  {t('credits.remainingCredits')}
                 </Text>
                 <Text fontSize="2xl" fontWeight="bold" color="purple.500">
                   {userStats?.credits || 0}
                 </Text>
                 <Text fontSize="sm" color="gray.500">
-                  积分
+                  {t('credits.credits')}
                 </Text>
               </Box>
                 <Button
@@ -183,7 +183,7 @@ const Profile: React.FC = () => {
                 }}
                 transition="all 0.2s"
               >
-                充值积分
+                {t('credits.recharge')}
                 </Button>
             </VStack>
           </HStack>
@@ -407,7 +407,7 @@ const Profile: React.FC = () => {
                 const imageUrl = imageUrlMatch ? imageUrlMatch[1].trim() : null;
                 return imageUrl ? (
                   <Box mb={4}>
-                    <Text fontSize="md" fontWeight="bold" mb={2}>生成的图片:</Text>
+                                          <Text fontSize="md" fontWeight="bold" mb={2}>{t('space.generatedImage')}</Text>
                     <Image
                       src={imageUrl}
                       alt="收藏的图片"
@@ -424,7 +424,7 @@ const Profile: React.FC = () => {
                           alignItems="center"
                           justifyContent="center"
                         >
-                          <Text color="gray.500">图片加载失败</Text>
+                          <Text color="gray.500">{t('space.imageLoadFailed')}</Text>
                         </Box>
                       }
                     />

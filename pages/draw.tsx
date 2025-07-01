@@ -73,7 +73,7 @@ export default function Draw() {
   const router = useRouter();
   const toast = useToast();
   const { t } = useLanguage();
-  const { addActivity, addFavorite, removeFavorite, favorites, userStats, getUserQuota } = useUserActivity();
+  const { addActivity, addFavorite, removeFavorite, favorites, userStats, getUserQuota, checkFreeQuotaExceeded, getRemainingFreeQuota } = useUserActivity();
   const { user } = useAuth();
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -87,55 +87,51 @@ export default function Draw() {
   // 从URL参数加载历史记录
   useEffect(() => {
     const { loadHistory, prompt: urlPrompt, style: urlStyle, size: urlSize } = router.query;
-    
-    if (loadHistory && typeof loadHistory === 'string') {
+    let targetHistory = null;
+    if (typeof window !== 'undefined') {
+      const pending = sessionStorage.getItem('pendingHistory');
+      if (pending) {
+        targetHistory = JSON.parse(pending);
+        sessionStorage.removeItem('pendingHistory');
+      }
+    }
+    if (!targetHistory && loadHistory && typeof loadHistory === 'string') {
       const histories = getHistories();
-      const targetHistory = histories.find(h => h.id === loadHistory);
-      if (targetHistory && targetHistory.type === 'draw') {
-        console.log('恢复历史记录:', targetHistory);
-        
-        // 恢复提示词
-        if (targetHistory.messages.length > 0) {
-          setPrompt(targetHistory.messages[0].content);
-        }
-        
-        // 恢复风格和尺寸
-        if (targetHistory.messages.length > 1 && targetHistory.messages[1].metadata) {
-          // 从metadata中恢复
-          const metadata = targetHistory.messages[1].metadata as any;
-          if (metadata.style) setStyle(metadata.style);
-          if (metadata.size) setSize(metadata.size);
-          console.log('从metadata恢复参数:', { style: metadata.style, size: metadata.size });
+      targetHistory = histories.find(h => h.id === loadHistory);
+    }
+    if (targetHistory && targetHistory.type === 'draw') {
+      // 还原prompt
+      if (targetHistory.messages.length > 0) {
+        setPrompt(targetHistory.messages[0].content);
+      }
+      // 还原风格和尺寸
+      if (targetHistory.messages.length > 1 && targetHistory.messages[1].metadata) {
+        const metadata = targetHistory.messages[1].metadata as any;
+        if (metadata.style) setStyle(metadata.style);
+        if (metadata.size) setSize(metadata.size);
+      } else {
+        const modelParts = targetHistory.model.split('-');
+        if (modelParts.length >= 2) {
+          setStyle(modelParts[0]);
+          setSize(modelParts.slice(1).join('-'));
         } else {
-          // 兼容旧格式：从model字段解析
-          const modelParts = targetHistory.model.split('-');
-          if (modelParts.length >= 2) {
-            setStyle(modelParts[0]);
-            setSize(modelParts.slice(1).join('-')); // 支持包含'-'的尺寸格式
-          } else {
-            setStyle(targetHistory.model);
-          }
-          console.log('从model字段恢复参数:', { model: targetHistory.model, 解析结果: modelParts });
+          setStyle(targetHistory.model);
         }
-        
-        // 恢复生成的图片
-        if (targetHistory.messages.length > 1) {
-          const aiResponse = targetHistory.messages[1].content;
-          const match = aiResponse.match(/生成的图片：(https?:\/\/[^\s]+)/);
-          if (match) {
-            // 如果是阿里云OSS链接，使用代理
-            const originalUrl = match[1];
-            if (originalUrl.includes('dashscope-result-bj.oss-cn-beijing.aliyuncs.com')) {
-              const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(originalUrl)}`;
-              setGeneratedImage(proxyUrl);
-            } else {
-              setGeneratedImage(originalUrl);
-            }
-          }
+      }
+      // 还原生成的图片
+      if (targetHistory.messages.length > 1) {
+        const aiResponse = targetHistory.messages[1].content;
+        const match = aiResponse.match(/生成的图片：(https?:\/\/[^\s]+)/);
+        if (match) {
+          const originalUrl = match[1];
+          // 无论什么外链都用代理
+          const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(originalUrl)}`;
+          setGeneratedImage(proxyUrl);
+        } else {
+          setGeneratedImage(null); // 没有图片
         }
       }
     } else if (urlPrompt && typeof urlPrompt === 'string') {
-      // 从URL参数直接加载
       setPrompt(urlPrompt);
       if (urlStyle && typeof urlStyle === 'string') {
         setStyle(urlStyle);
@@ -280,6 +276,17 @@ export default function Draw() {
         description: '登录后即可使用AI绘图功能',
         status: 'warning',
         duration: 3000,
+      });
+      return;
+    }
+
+    // 检查免费额度
+    if (checkFreeQuotaExceeded('image')) {
+      toast({
+        title: '已达免费绘图上限',
+        description: `您已用完 ${userStats.free_images_limit} 次免费绘图，请开通会员享受更多权益`,
+        status: 'warning',
+        duration: 4000,
       });
       return;
     }
@@ -699,12 +706,12 @@ export default function Draw() {
                     {t('draw.generate')}
                     {isFreeUser ? (
                       <Text fontSize="md" ml={2} color="white" fontWeight="bold" px={3} py={1} borderRadius="md" bg="purple.500" boxShadow="sm">
-                        剩余免费图片：{freeQuota - freeUsed}/{freeQuota}
+                        {t('credits.remainingFreeImages')}：{freeQuota - freeUsed}/{freeQuota}
                       </Text>
                     ) : (
-                      <Text fontSize="xs" ml={2} color="gray.300">
-                        (消耗{creditCost}积分)
-                      </Text>
+                    <Text fontSize="xs" ml={2} color="gray.300">
+                        ({t('credits.consume')}{creditCost}{t('credits.credits')})
+                    </Text>
                     )}
                   </Button>
                 </VStack>

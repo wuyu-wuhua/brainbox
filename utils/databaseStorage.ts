@@ -45,15 +45,309 @@ interface DBUserFavorite {
   created_at?: string;
 }
 
-// 获取当前用户ID
-export const getCurrentUserId = async (): Promise<string | null> => {
-  if (!isClient) return null;
+// 测试数据库连接
+export const testDatabaseConnection = async (): Promise<boolean> => {
+  try {
+    console.log('=== 测试数据库连接 ===');
+    const { data, error } = await supabase.from('user_stats').select('count').limit(1);
+    
+    if (error) {
+      console.error('❌ 数据库连接测试失败:', error);
+      return false;
+    }
+    
+    console.log('✅ 数据库连接正常');
+    return true;
+  } catch (error) {
+    console.error('❌ 数据库连接异常:', error);
+    return false;
+  }
+};
+
+// 专门测试 user_stats 表的权限和结构
+export const testUserStatsTable = async (): Promise<{ success: boolean; message: string }> => {
+  console.log('=== 测试 user_stats 表 ===');
   
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return { success: false, message: '用户未登录' };
+    }
+
+    console.log('开始测试 user_stats 表权限...');
+    
+    // 1. 测试 SELECT 权限
+    console.log('1. 测试 SELECT 权限...');
+    const { data: selectData, error: selectError } = await supabase
+      .from('user_stats')
+      .select('*')
+      .eq('user_id', userId);
+    
+    if (selectError) {
+      console.error('❌ SELECT 权限测试失败:', selectError);
+      return { success: false, message: `SELECT 权限错误: ${selectError.message}` };
+    }
+    console.log('✅ SELECT 权限正常，现有记录数:', selectData?.length || 0);
+
+    // 2. 测试 INSERT 权限
+    console.log('2. 测试 INSERT 权限...');
+    const testData = {
+      user_id: userId,
+      conversations: 0,
+      images: 0,
+      documents: 0,
+      videos: 0,
+      credits: 10000,
+      free_conversations_used: 0,
+      free_images_used: 0,
+      free_documents_used: 0,
+      free_videos_used: 0,
+      free_conversations_limit: 50,
+      free_images_limit: 5,
+      free_documents_limit: 50,
+      free_videos_limit: 2,
+      updated_at: new Date().toISOString()
+    };
+    
+    const { data: insertData, error: insertError } = await supabase
+      .from('user_stats')
+      .insert([testData])
+      .select();
+    
+    if (insertError) {
+      console.error('❌ INSERT 权限测试失败:', insertError);
+      console.error('尝试插入的数据:', testData);
+      return { success: false, message: `INSERT 权限错误: ${insertError.message}` };
+    }
+    
+    console.log('✅ INSERT 权限正常，插入成功:', insertData);
+    
+    // 3. 立即删除测试数据
+    console.log('3. 清理测试数据...');
+    const { error: deleteError } = await supabase
+      .from('user_stats')
+      .delete()
+      .eq('user_id', userId)
+      .eq('conversations', 0);
+    
+    if (deleteError) {
+      console.warn('⚠️ 清理测试数据失败:', deleteError);
+    } else {
+      console.log('✅ 测试数据已清理');
+    }
+    
+    return { success: true, message: 'user_stats 表权限测试全部通过' };
+    
+  } catch (error) {
+    console.error('❌ 测试 user_stats 表异常:', error);
+    return { success: false, message: `测试异常: ${error}` };
+  }
+};
+
+// 强制保存统计数据（使用更简单的方式）
+export const forceUpdateUserStats = async (userStats: {
+  conversations: number;
+  images: number;
+  documents: number;
+  videos: number;
+  credits?: number;
+  free_conversations_used?: number;
+  free_images_used?: number;
+  free_documents_used?: number;
+  free_videos_used?: number;
+  free_conversations_limit?: number;
+  free_images_limit?: number;
+  free_documents_limit?: number;
+  free_videos_limit?: number;
+}): Promise<boolean> => {
+  console.log('=== forceUpdateUserStats 开始 ===');
+  console.log('统计数据:', userStats);
+  
+  try {
+    // 首先测试数据库连接
+    const isConnected = await testDatabaseConnection();
+    if (!isConnected) {
+      console.log('❌ 数据库连接失败，跳过保存');
+      return false;
+    }
+    
+    const userId = await getCurrentUserId();
+    console.log('获取到用户ID:', userId);
+    
+    if (!userId) {
+      console.log('❌ 用户未登录，无法保存统计数据');
+      return false;
+    }
+
+    // 检查用户是否已存在记录
+    const { data: existingData, error: selectError } = await supabase
+      .from('user_stats')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (selectError && selectError.code !== 'PGRST116') {
+      console.error('❌ 查询现有记录失败:', selectError);
+      return false;
+    }
+
+    // 适应现有表结构，直接使用实际字段名
+    const updateData = {
+      conversations: userStats.conversations,
+      images: userStats.images,
+      documents: userStats.documents,
+      videos: userStats.videos,
+      credits: userStats.credits || 10000,
+      // 免费额度使用情况
+      free_conversations_used: userStats.free_conversations_used || 0,
+      free_images_used: userStats.free_images_used || 0,
+      free_documents_used: userStats.free_documents_used || 0,
+      free_videos_used: userStats.free_videos_used || 0,
+      // 免费额度限制
+      free_conversations_limit: userStats.free_conversations_limit || 50,
+      free_images_limit: userStats.free_images_limit || 5,
+      free_documents_limit: userStats.free_documents_limit || 50,
+      free_videos_limit: userStats.free_videos_limit || 2,
+      updated_at: new Date().toISOString()
+    };
+    
+    console.log('准备保存的数据:', updateData);
+
+    let result;
+    
+    if (existingData) {
+      // 更新现有记录
+      console.log('更新现有记录...');
+      result = await supabase
+        .from('user_stats')
+        .update(updateData)
+        .eq('user_id', userId)
+        .select();
+    } else {
+      // 插入新记录
+      console.log('插入新记录...');
+      result = await supabase
+        .from('user_stats')
+        .insert([{
+          user_id: userId,
+          ...updateData
+        }])
+        .select();
+    }
+
+    if (result.error) {
+      console.error('❌ 保存统计数据失败 - 数据库错误:', result.error);
+      console.error('错误详情:', {
+        code: result.error.code,
+        message: result.error.message,
+        details: result.error.details,
+        hint: result.error.hint
+      });
+      console.error('尝试保存的数据:', updateData);
+      console.error('用户ID:', userId);
+      return false;
+    }
+
+    console.log('✅ 统计数据已成功保存到数据库:', result.data);
+    return true;
+  } catch (error) {
+    console.error('❌ 保存统计数据异常:', error);
+    return false;
+  }
+};
+
+// 强制保存活动记录（使用更简单的方式）
+export const forceAddActivity = async (activity: {
+  type: string;
+  title: string;
+  description?: string;
+}): Promise<boolean> => {
+  console.log('=== forceAddActivity 开始 ===');
+  console.log('活动数据:', activity);
+  
+  try {
+    // 首先测试数据库连接
+    const isConnected = await testDatabaseConnection();
+    if (!isConnected) {
+      console.log('❌ 数据库连接失败，跳过保存');
+      return false;
+    }
+    
+    const userId = await getCurrentUserId();
+    console.log('获取到用户ID:', userId);
+    
+    if (!userId) {
+      console.log('❌ 用户未登录，无法添加活动记录');
+      return false;
+    }
+
+    const insertData = {
+      user_id: userId,
+      type: activity.type,
+      title: activity.title,
+      description: activity.description,
+      created_at: new Date().toISOString()
+    };
+    console.log('准备插入的数据:', insertData);
+
+    const { data, error } = await supabase
+      .from('user_activities')
+      .insert([insertData])
+      .select();
+
+    if (error) {
+      console.error('❌ 添加活动记录失败 - 数据库错误:', error);
+      console.error('错误详情:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
+      return false;
+    }
+
+    console.log('✅ 活动记录已成功添加到数据库:', data);
+    return true;
+  } catch (error) {
+    console.error('❌ 添加活动记录异常:', error);
+    return false;
+  }
+};
+
+// 获取当前用户ID
+export const getCurrentUserId = async (): Promise<string | null> => {
+  console.log('=== getCurrentUserId 开始 ===');
+  
+  if (!isClient) {
+    console.log('⚠️ 不在客户端环境，返回null');
+    return null;
+  }
+  
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    
+    if (error) {
+      console.error('❌ 获取用户信息失败:', error);
+      console.error('认证错误详情:', {
+        code: error.code,
+        message: error.message
+      });
+      return null;
+    }
+    
+    if (user) {
+      console.log('✅ 获取到用户信息:', {
+        id: user.id,
+        email: user.email,
+        created_at: user.created_at
+      });
+    } else {
+      console.log('⚠️ 用户未登录');
+    }
+    
     return user?.id || null;
   } catch (error) {
-    console.error('获取用户ID失败:', error);
+    console.error('❌ 获取用户ID异常:', error);
     return null;
   }
 };
@@ -299,33 +593,46 @@ export const addActivityToDB = async (activity: {
   title: string;
   description?: string;
 }): Promise<boolean> => {
+  console.log('=== addActivityToDB 开始 ===');
+  console.log('活动数据:', activity);
+  
   try {
     const userId = await getCurrentUserId();
+    console.log('获取到用户ID:', userId);
+    
     if (!userId) {
-      console.log('用户未登录，无法添加活动记录');
+      console.log('❌ 用户未登录，无法添加活动记录');
       return false;
     }
 
-    const { error } = await supabase
+    const insertData = {
+      user_id: userId,
+      type: activity.type,
+      title: activity.title,
+      description: activity.description
+    };
+    console.log('准备插入的数据:', insertData);
+
+    const { data, error } = await supabase
       .from('user_activities')
-      .insert([
-        {
-          user_id: userId,
-          type: activity.type,
-          title: activity.title,
-          description: activity.description
-        }
-      ]);
+      .insert([insertData])
+      .select();
 
     if (error) {
-      console.error('添加活动记录失败:', error);
+      console.error('❌ 添加活动记录失败 - 数据库错误:', error);
+      console.error('错误详情:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
       return false;
     }
 
-    console.log('活动记录已添加:', activity);
+    console.log('✅ 活动记录已添加到数据库:', data);
     return true;
   } catch (error) {
-    console.error('添加活动记录异常:', error);
+    console.error('❌ 添加活动记录异常:', error);
     return false;
   }
 };
@@ -389,6 +696,71 @@ export const getUserStatsFromDB = async (): Promise<any> => {
   }
 };
 
+// 获取完整统计数据的方法
+export const getCompleteUserStatsFromDB = async (): Promise<{
+  conversations: number;
+  images: number;
+  documents: number;
+  videos: number;
+  credits: number;
+  free_conversations_used: number;
+  free_images_used: number;
+  free_documents_used: number;
+  free_videos_used: number;
+  free_conversations_limit: number;
+  free_images_limit: number;
+  free_documents_limit: number;
+  free_videos_limit: number;
+} | null> => {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      console.log('用户未登录，返回空统计数据');
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from('user_stats')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 是"找不到记录"的错误
+      console.error('获取完整统计数据失败:', error);
+      return null;
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    // 直接从表字段读取数据（适应现有表结构）
+    const completeStats = {
+      conversations: data.conversations || 0,
+      images: data.images || 0,
+      documents: data.documents || 0,
+      videos: data.videos || 0,
+      credits: data.credits || 10000,
+      // 免费额度使用情况
+      free_conversations_used: data.free_conversations_used || 0,
+      free_images_used: data.free_images_used || 0,
+      free_documents_used: data.free_documents_used || 0,
+      free_videos_used: data.free_videos_used || 0,
+      // 免费额度限制
+      free_conversations_limit: data.free_conversations_limit || 50,
+      free_images_limit: data.free_images_limit || 5,
+      free_documents_limit: data.free_documents_limit || 50,
+      free_videos_limit: data.free_videos_limit || 2,
+    };
+
+    console.log('获取到完整统计数据:', completeStats);
+    return completeStats;
+  } catch (error) {
+    console.error('获取完整统计数据异常:', error);
+    return null;
+  }
+};
+
 export const saveUserStatsToDB = async (stats: {
   total_conversations: number;
   total_messages: number;
@@ -422,6 +794,81 @@ export const saveUserStatsToDB = async (stats: {
     return true;
   } catch (error) {
     console.error('保存统计数据异常:', error);
+    return false;
+  }
+};
+
+// 新的完整统计数据保存方法（使用本地存储作为扩展字段）
+export const saveCompleteUserStatsToDB = async (userStats: {
+  conversations: number;
+  images: number;
+  documents: number;
+  videos: number;
+  credits?: number;
+  free_conversations_used?: number;
+  free_images_used?: number;
+  free_documents_used?: number;
+  free_videos_used?: number;
+  free_conversations_limit?: number;
+  free_images_limit?: number;
+  free_documents_limit?: number;
+  free_videos_limit?: number;
+}): Promise<boolean> => {
+  console.log('=== saveCompleteUserStatsToDB 开始 ===');
+  console.log('统计数据:', userStats);
+  
+  try {
+    const userId = await getCurrentUserId();
+    console.log('获取到用户ID:', userId);
+    
+    if (!userId) {
+      console.log('❌ 用户未登录，无法保存完整统计数据');
+      return false;
+    }
+
+    // 直接保存到对应字段（适应现有表结构）
+    const upsertData = {
+      user_id: userId,
+      conversations: userStats.conversations,
+      images: userStats.images,
+      documents: userStats.documents,
+      videos: userStats.videos,
+      credits: userStats.credits || 10000,
+      // 免费额度使用情况
+      free_conversations_used: userStats.free_conversations_used || 0,
+      free_images_used: userStats.free_images_used || 0,
+      free_documents_used: userStats.free_documents_used || 0,
+      free_videos_used: userStats.free_videos_used || 0,
+      // 免费额度限制
+      free_conversations_limit: userStats.free_conversations_limit || 50,
+      free_images_limit: userStats.free_images_limit || 5,
+      free_documents_limit: userStats.free_documents_limit || 50,
+      free_videos_limit: userStats.free_videos_limit || 2,
+      updated_at: new Date().toISOString()
+    };
+    
+    console.log('准备upsert的数据:', upsertData);
+    
+    const { data, error } = await supabase
+      .from('user_stats')
+      .upsert([upsertData])
+      .select();
+
+    if (error) {
+      console.error('❌ 保存完整统计数据失败 - 数据库错误:', error);
+      console.error('错误详情:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
+      return false;
+    }
+
+    console.log('✅ 完整统计数据已保存到数据库:', data);
+    return true;
+  } catch (error) {
+    console.error('❌ 保存完整统计数据异常:', error);
     return false;
   }
 };

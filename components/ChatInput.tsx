@@ -11,6 +11,7 @@ import {
   HStack,
 } from '@chakra-ui/react';
 import { FiSend, FiPaperclip } from 'react-icons/fi';
+import { useLanguage } from '../contexts/LanguageContext';
 
 interface ChatInputProps {
   value: string;
@@ -43,6 +44,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
   freeUsed = 0,
   creditCost = 5,
 }) => {
+  const { t } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bgColor = useColorModeValue('white', 'gray.700');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
@@ -126,30 +128,30 @@ const ChatInput: React.FC<ChatInputProps> = ({
               borderColor="purple.200"
             >
               <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
-                剩余免费对话：
+                                  {t('credits.remainingFreeChats')}：
               </Text>
               <Text fontSize="xs" color="purple.700" _dark={{ color: 'purple.200' }} fontWeight="bold">
                 {freeQuota - freeUsed}/{freeQuota}
               </Text>
             </HStack>
           ) : (
-            <HStack 
-              spacing={1} 
-              bg="purple.50" 
-              _dark={{ bg: 'purple.900', borderColor: 'purple.700' }}
-              px={2} 
-              py={1} 
-              borderRadius="md"
-              border="1px solid"
-              borderColor="purple.200"
-            >
-              <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
-                消耗
-              </Text>
-              <Text fontSize="xs" color="purple.700" _dark={{ color: 'purple.200' }} fontWeight="bold">
-                {creditCost}积分
-              </Text>
-            </HStack>
+          <HStack 
+            spacing={1} 
+            bg="purple.50" 
+            _dark={{ bg: 'purple.900', borderColor: 'purple.700' }}
+            px={2} 
+            py={1} 
+            borderRadius="md"
+            border="1px solid"
+            borderColor="purple.200"
+          >
+            <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
+              {t('credits.consume')}
+            </Text>
+            <Text fontSize="xs" color="purple.700" _dark={{ color: 'purple.200' }} fontWeight="bold">
+                {creditCost}{t('credits.credits')}
+            </Text>
+          </HStack>
           )
         )}
         

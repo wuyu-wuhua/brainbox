@@ -170,8 +170,50 @@ const Sidebar: React.FC<SidebarProps> = ({
   const { isOpen: isLoginOpen, onOpen: onLoginOpen, onClose: onLoginClose } = useDisclosure();
 
   useEffect(() => {
-    setHistories(getHistories());
-  }, []);
+    const loadHistories = async () => {
+      if (!user) {
+        setHistories([]);
+        return;
+      }
+      
+      // 先从本地获取历史记录（立即响应）
+      const localHistories = getHistories();
+      setHistories(localHistories);
+      
+      try {
+        // 然后异步从数据库获取最新数据
+        const { getHistoriesAsync } = await import('../utils/storage');
+        const dbHistories = await getHistoriesAsync();
+        if (dbHistories.length > 0) {
+          setHistories(dbHistories);
+        }
+      } catch (error) {
+        console.error('加载历史记录失败:', error);
+      }
+    };
+
+    loadHistories();
+
+    // 监听历史记录更新事件
+    const { historyEventBus } = require('../utils/storage');
+    const unsubscribe = historyEventBus.subscribe(() => {
+      const updatedHistories = getHistories();
+      setHistories(updatedHistories);
+    });
+
+    // 监听来自其他页面的历史记录更新事件
+    const handleHistoryUpdated = () => {
+      const updatedHistories = getHistories();
+      setHistories(updatedHistories);
+    };
+
+    window.addEventListener('history-updated', handleHistoryUpdated);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('history-updated', handleHistoryUpdated);
+    };
+  }, [user]);
 
   const handleClearHistory = () => {
     onClearHistory();
@@ -187,44 +229,29 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const handleLoadChat = (history: ChatHistory) => {
     if (!checkLoginStatus()) return;
-    
-    // 根据历史记录类型跳转到对应页面
     if (history.type === 'chat') {
-      // 如果当前在聊天页面，直接调用传递的回调函数
       if (router.pathname === '/' && onLoadChat) {
         onLoadChat(history);
       } else {
-        // 跳转到聊天页面并传递历史记录ID
-        router.push({
-          pathname: '/',
-          query: { 
-            loadHistory: history.id
-          }
-        });
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pendingHistory', JSON.stringify(history));
+        }
+        router.push('/');
       }
     } else if (history.type === 'draw') {
-      // 跳转到绘画页面
       router.push({
         pathname: '/draw',
-        query: { 
-          loadHistory: history.id
-        }
+        query: { loadHistory: history.id }
       });
     } else if (history.type === 'read') {
-      // 跳转到阅读页面
       router.push({
         pathname: '/read',
-        query: { 
-          loadHistory: history.id
-        }
+        query: { loadHistory: history.id }
       });
     } else if (history.type === 'video') {
-      // 跳转到视频页面
       router.push({
         pathname: '/video',
-        query: { 
-          loadHistory: history.id
-        }
+        query: { loadHistory: history.id }
       });
     }
   };
@@ -234,7 +261,8 @@ const Sidebar: React.FC<SidebarProps> = ({
     const { deleteHistory } = await import('../utils/storage');
     deleteHistory(id);
     // 重新获取最新的历史记录
-    setHistories(getHistories());
+    const updatedHistories = getHistories();
+    setHistories(updatedHistories);
     toast({
       title: t('history.deleteSuccess'),
       status: 'success',
@@ -262,7 +290,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       const { updateHistory } = await import('../utils/storage');
       updateHistory(updatedHistory);
       // 重新获取最新的历史记录
-      setHistories(getHistories());
+      const updatedHistories = getHistories();
+      setHistories(updatedHistories);
       if (onUpdateHistory) {
         onUpdateHistory(updatedHistory);
       }

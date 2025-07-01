@@ -20,9 +20,20 @@ import { Message } from '../../types/chat';
 interface ScriptViewProps {
   onClose: () => void;
   onSendMessage: (message: Message, aiResponse?: Message, aiPrompt?: string) => void;
+  isFreeUser?: boolean;
+  freeQuota?: number;
+  freeUsed?: number;
+  creditCost?: number;
 }
 
-const ScriptView: React.FC<ScriptViewProps> = ({ onClose, onSendMessage }) => {
+const ScriptView: React.FC<ScriptViewProps> = ({ 
+  onClose, 
+  onSendMessage,
+  isFreeUser = false,
+  freeQuota = 0,
+  freeUsed = 0,
+  creditCost = 5,
+}) => {
   const { t } = useLanguage();
   const toast = useToast();
   
@@ -124,12 +135,11 @@ const ScriptView: React.FC<ScriptViewProps> = ({ onClose, onSendMessage }) => {
       {/* Header */}
       <HStack justify="space-between">
         <HStack>
-          <Icon as={FiFilm} color="purple.500" />
+          <Icon as={FiFilm} />
           <Text fontWeight="bold">{t('script.title')}</Text>
         </HStack>
-        <Text fontSize="sm" color="purple.400" fontWeight="bold">消耗30积分</Text>
         <IconButton 
-          aria-label="关闭" 
+          aria-label={t('common.close')} 
           icon={<FaTimes />} 
           size="sm" 
           variant="ghost" 
@@ -185,21 +195,57 @@ const ScriptView: React.FC<ScriptViewProps> = ({ onClose, onSendMessage }) => {
       
       {/* Footer */}
       <HStack justify="flex-end" w="full" mt={2}>
-        <IconButton 
-          aria-label="创作剧本" 
-          icon={isLoading ? <Spinner size="sm" /> : <FaPaperPlane />} 
-          colorScheme="purple" 
-          isRound 
-          size="md" 
-          onClick={handleCreateScript}
-          isDisabled={!idea.trim() || isLoading}
-          isLoading={isLoading}
-        />
-        {idea.trim() && (
-          <Text fontSize="sm" color="purple.500" fontWeight="bold" ml={2} minW="80px">
-            消耗30积分
-          </Text>
-        )}
+        <HStack spacing={2}>
+          <IconButton 
+            aria-label="发送" 
+            icon={isLoading ? <Spinner size="sm" /> : <FaPaperPlane />} 
+            colorScheme="purple" 
+            isRound 
+            size="md" 
+            onClick={handleCreateScript}
+            isDisabled={!idea.trim() || isLoading}
+            isLoading={isLoading}
+          />
+          {idea.trim() && (
+            isFreeUser ? (
+              <HStack 
+                spacing={1} 
+                bg="purple.50" 
+                _dark={{ bg: 'purple.900', borderColor: 'purple.700' }}
+                px={2} 
+                py={1} 
+                borderRadius="md"
+                border="1px solid"
+                borderColor="purple.200"
+              >
+                <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
+                  {t('credits.remainingFreeChats')}：
+                </Text>
+                <Text fontSize="xs" color="purple.700" _dark={{ color: 'purple.200' }} fontWeight="bold">
+                  {freeQuota - freeUsed}/{freeQuota}
+                </Text>
+              </HStack>
+            ) : (
+              <HStack 
+                spacing={1} 
+                bg="purple.50" 
+                _dark={{ bg: 'purple.900', borderColor: 'purple.700' }}
+                px={2} 
+                py={1} 
+                borderRadius="md"
+                border="1px solid"
+                borderColor="purple.200"
+              >
+                <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
+                  消耗
+                </Text>
+                <Text fontSize="xs" color="purple.700" _dark={{ color: 'purple.200' }} fontWeight="bold">
+                  {creditCost}积分
+                </Text>
+              </HStack>
+            )
+          )}
+        </HStack>
       </HStack>
     </VStack>
   );

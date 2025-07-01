@@ -134,6 +134,10 @@ export const saveHistory = (messages: Message[], model: string, type: 'chat' | '
     () => saveHistoryToDB(messages, model, type),
     'saveHistory'
   );
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('history-updated'));
+  }
 };
 
 export const saveSessionHistory = (messages: Message[], model: string, type: 'chat' | 'draw' | 'read' | 'video' = 'chat'): string => {
@@ -167,6 +171,10 @@ export const saveSessionHistory = (messages: Message[], model: string, type: 'ch
     () => saveHistoryToDB(messages, model, type),
     'saveSessionHistory'
   );
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('history-updated'));
+  }
 
   return sessionId;
 };
@@ -220,6 +228,10 @@ export const updateSessionHistory = (sessionId: string, messages: Message[], mod
     console.log('未找到对应的会话ID:', sessionId);
   }
   console.log('=== updateSessionHistory 结束 ===');
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('history-updated'));
+  }
 };
 
 export const getHistories = (): ChatHistory[] => {
@@ -285,6 +297,10 @@ export function addHistory(history: ChatHistory) {
     () => saveHistoryToDB(history.messages, history.model, history.type),
     'addHistory'
   );
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('history-updated'));
+  }
 }
 
 export function deleteHistory(id: string) {
@@ -302,6 +318,10 @@ export function deleteHistory(id: string) {
     () => deleteHistoryFromDB(id),
     'deleteHistory'
   );
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('history-updated'));
+  }
 }
 
 export function updateHistory(updatedHistory: ChatHistory) {
@@ -322,6 +342,10 @@ export function updateHistory(updatedHistory: ChatHistory) {
       () => updateHistoryInDB(updatedHistory.id, updatedHistory.messages, updatedHistory.model),
       'updateHistory'
     );
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('history-updated'));
   }
 }
 
@@ -347,6 +371,10 @@ export function renameHistory(id: string, newTitle: string) {
       'renameHistory'
     );
   }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('history-updated'));
+  }
 }
 
 export function deleteMultipleHistories(ids: string[]) {
@@ -364,6 +392,10 @@ export function deleteMultipleHistories(ids: string[]) {
     () => deleteMultipleHistoriesFromDB(ids),
     'deleteMultipleHistories'
   );
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('history-updated'));
+  }
 }
 
 export function clearHistories() {
@@ -382,6 +414,10 @@ export function clearHistories() {
     () => clearAllHistoriesFromDB(),
     'clearHistories'
   );
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('history-updated'));
+  }
 }
 
 export const clearAllUserData = () => {
@@ -407,5 +443,9 @@ export const clearAllUserData = () => {
     historyEventBus.emit();
   } catch (error) {
     console.error('清除用户数据失败:', error);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('history-updated'));
   }
 }; 

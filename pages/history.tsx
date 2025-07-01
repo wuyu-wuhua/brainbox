@@ -43,11 +43,18 @@ import { useRouter } from 'next/router';
 import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import { ChatHistory } from '../types/chat';
-import { clearHistories, deleteHistory, renameHistory, deleteMultipleHistories } from '../utils/storage';
+import { 
+  clearHistories, 
+  deleteHistory, 
+  renameHistory, 
+  deleteMultipleHistories, 
+  getHistories,
+  getHistoriesAsync,
+  historyEventBus
+} from '../utils/storage';
 import MobileNav from '../components/MobileNav';
 import { useLanguage } from '../contexts/LanguageContext';
-import { useUserActivity } from '../contexts/UserActivityContext';
-import { historyEventBus } from '../utils/historyEventBus';
+import { useAuth } from '../contexts/AuthContext';
 
 const HistoryCard = ({ history, onDelete, onNavigate, onRename, isSelected, onSelect, isSelectionMode }) => {
   const bgColor = useColorModeValue('white', 'gray.700');
@@ -399,10 +406,10 @@ const HistoryCard = ({ history, onDelete, onNavigate, onRename, isSelected, onSe
 };
 
 export default function History() {
-  const { histories, loading } = useUserActivity();
+  const [histories, setHistories] = useState<ChatHistory[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
-  const [refreshFlag, setRefreshFlag] = useState(0); // 用于强制刷新
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
   const toast = useToast();
   const { isOpen: isClearAllOpen, onOpen: onClearAllOpen, onClose: onClearAllClose } = useDisclosure();
@@ -410,17 +417,72 @@ export default function History() {
   const clearAllCancelRef = useRef<HTMLButtonElement>(null);
   const batchDeleteCancelRef = useRef<HTMLButtonElement>(null);
   const { t } = useLanguage();
+  const { user } = useAuth();
 
-  // 订阅历史事件总线，实现自动刷新
+  // 获取历史记录的函数
+  const loadHistories = async () => {
+    if (!user) {
+      setHistories([]);
+      setLoading(false);
+      return;
+    }
+    
+    // 立即从本地获取历史记录并显示（不显示loading）
+    const localHistories = getHistories();
+    setHistories(localHistories);
+    setLoading(false); // 立即设置为false，显示本地数据
+    
+    // 后台异步从数据库获取最新数据（静默更新）
+    try {
+      const dbHistories = await getHistoriesAsync();
+      if (dbHistories && dbHistories.length > 0) {
+        setHistories(dbHistories);
+      }
+    } catch (error) {
+      console.error('后台同步历史记录失败:', error);
+      // 数据库失败不影响显示，已经有本地数据了
+    }
+  };
+
   useEffect(() => {
+    // 如果用户未登录，直接设置空状态
+    if (!user) {
+      setHistories([]);
+      setLoading(false);
+      return;
+    }
+
+    // 如果用户已登录，立即加载本地历史记录
+    const localHistories = getHistories();
+    setHistories(localHistories);
+    setLoading(false);
+
+    // 然后异步同步数据库数据
+    loadHistories();
+
+    // 监听历史记录更新事件
     const unsubscribe = historyEventBus.subscribe(() => {
-      setRefreshFlag(f => f + 1);
+      const updatedHistories = getHistories();
+      setHistories(updatedHistories);
     });
-    return () => unsubscribe();
-  }, []);
+
+    // 监听来自其他页面的历史记录更新事件
+    const handleHistoryUpdated = () => {
+      const updatedHistories = getHistories();
+      setHistories(updatedHistories);
+    };
+
+    window.addEventListener('history-updated', handleHistoryUpdated);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('history-updated', handleHistoryUpdated);
+    };
+  }, [user]);
 
   const handleClearAll = () => {
     clearHistories();
+    setHistories([]);
     toast({
       title: t('history.clearSuccess'),
       status: 'success',
@@ -431,6 +493,8 @@ export default function History() {
 
   const handleDeleteHistory = (id: string) => {
     deleteHistory(id);
+    const updatedHistories = getHistories();
+    setHistories(updatedHistories);
     toast({
       title: t('history.deleteSuccess'),
       status: 'success',
@@ -440,6 +504,8 @@ export default function History() {
 
   const handleRenameHistory = (id: string, newTitle: string) => {
     renameHistory(id, newTitle);
+    const updatedHistories = getHistories();
+    setHistories(updatedHistories);
     toast({
       title: t('history.renameSuccess'),
       status: 'success',
@@ -465,6 +531,8 @@ export default function History() {
 
   const handleBatchDelete = () => {
     deleteMultipleHistories(selectedIds);
+    const updatedHistories = getHistories();
+    setHistories(updatedHistories);
     setSelectedIds([]);
     setIsSelectionMode(false);
     toast({
@@ -481,20 +549,22 @@ export default function History() {
   };
 
   const handleNavigateToHistory = (history: ChatHistory) => {
-    // 根据历史记录类型跳转到对应页面
-    if (history.type === 'chat') {
-      // 跳转到聊天页面并恢复对话
-      router.push({
-        pathname: '/',
-        query: { loadHistory: history.id }
-      });
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('pendingHistory', JSON.stringify(history));
+    }
+    
+    if (history.type === 'chat' || history.type === 'read') {
+      // 对话类型和文档类型都跳转到首页进行对话
+      if (router.pathname === '/') {
+        // 直接本地还原（触发index页的useEffect）
+        window.location.reload(); // 强制刷新首页以触发pendingHistory逻辑
+      } else {
+        router.push('/'); // 跳转到首页，不带参数
+      }
     } else if (history.type === 'draw') {
-      // 跳转到绘画页面并恢复设置
       const userMessage = history.messages[0]?.content || '';
-      // 从模型名称中提取风格和模式信息
       const modelParts = history.model.split('-');
       const style = modelParts[0] || 'realistic';
-      
       router.push({
         pathname: '/draw',
         query: { 
@@ -503,16 +573,8 @@ export default function History() {
           style: style
         }
       });
-    } else if (history.type === 'read') {
-      // 跳转到阅读页面
-      router.push({
-        pathname: '/read',
-        query: { loadHistory: history.id }
-      });
     } else if (history.type === 'video') {
-      // 跳转到视频页面并恢复设置
       const userMessage = history.messages[0]?.content || '';
-      
       router.push({
         pathname: '/video',
         query: { 
@@ -522,21 +584,6 @@ export default function History() {
       });
     }
   };
-
-  if (loading) {
-    return (
-      <Box minH="100vh" bg={useColorModeValue('gray.50', 'gray.900')}>
-        <Header />
-        <Box ml={{ base: '0', md: '250px' }} pt={{ base: "60px", md: "60px" }}>
-          <Stack spacing={6} p={{ base: 4, md: 8 }}>
-            {[1,2,3].map(i => (
-              <Skeleton key={i} height="120px" borderRadius="lg" />
-            ))}
-          </Stack>
-        </Box>
-      </Box>
-    );
-  }
 
   return (
     <Box minH="100vh" bg={useColorModeValue('gray.50', 'gray.900')}>
@@ -608,25 +655,47 @@ export default function History() {
               </HStack>
             </Flex>
             
-            <SimpleGrid 
-              columns={{ base: 1, md: 2, lg: 3 }} 
-              spacing={6}
-              w="100%"
-              overflowX="hidden"
-            >
-              {histories.map((item) => (
-                <HistoryCard
-                  key={item.id}
-                  history={item}
-                  onDelete={() => handleDeleteHistory(item.id)}
-                  onNavigate={handleNavigateToHistory}
-                  onRename={handleRenameHistory}
-                  isSelected={selectedIds.includes(item.id)}
-                  onSelect={handleSelectHistory}
-                  isSelectionMode={isSelectionMode}
-                />
-              ))}
-            </SimpleGrid>
+            {loading ? (
+              <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
+                {[...Array(6)].map((_, i) => (
+                  <Skeleton key={i} height="200px" borderRadius="lg" />
+                ))}
+              </SimpleGrid>
+            ) : histories.length === 0 ? (
+              <Box textAlign="center" py={10}>
+                <Text fontSize="lg" color="gray.500" mb={4}>
+                  {user ? t('history.noHistory') : '请先登录查看历史记录'}
+                </Text>
+                {user && (
+                  <Button 
+                    colorScheme="purple" 
+                    onClick={() => router.push('/')}
+                  >
+                    开始新对话
+                  </Button>
+                )}
+              </Box>
+            ) : (
+              <SimpleGrid 
+                columns={{ base: 1, md: 2, lg: 3 }} 
+                spacing={6}
+                w="100%"
+                overflowX="hidden"
+              >
+                {histories.map((item) => (
+                  <HistoryCard
+                    key={item.id}
+                    history={item}
+                    onDelete={() => handleDeleteHistory(item.id)}
+                    onNavigate={handleNavigateToHistory}
+                    onRename={handleRenameHistory}
+                    isSelected={selectedIds.includes(item.id)}
+                    onSelect={handleSelectHistory}
+                    isSelectionMode={isSelectionMode}
+                  />
+                ))}
+              </SimpleGrid>
+            )}
           </VStack>
         </Box>
       </Box>

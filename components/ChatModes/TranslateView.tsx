@@ -31,12 +31,20 @@ interface TranslateViewProps {
     displayName: string;
     logo: string;
   };
+  isFreeUser?: boolean;
+  freeQuota?: number;
+  freeUsed?: number;
+  creditCost?: number;
 }
 
 const TranslateView: React.FC<TranslateViewProps> = ({ 
   onClose, 
   onSendMessage,
-  selectedModel 
+  selectedModel,
+  isFreeUser = false,
+  freeQuota = 0,
+  freeUsed = 0,
+  creditCost = 5,
 }) => {
   const { t } = useLanguage();
   const toast = useToast();
@@ -202,24 +210,115 @@ ${data.translatedText}
         onChange={(e) => setInputText(e.target.value)}
         isDisabled={isLoading}
       />
-      
-      {/* Footer */}
-      <HStack justify="flex-end" w="full" mt={2}>
-        <IconButton 
-          aria-label="发送" 
-          icon={isLoading ? <Spinner size="sm" /> : <FaPaperPlane />} 
-          colorScheme="purple" 
-          isRound 
-          size="md" 
-          onClick={handleTranslate}
-          isDisabled={!inputText.trim() || isLoading}
-          isLoading={isLoading}
-        />
-        {inputText.trim() && (
-          <Text fontSize="sm" color="purple.500" fontWeight="bold" ml={2} minW="80px">
-            消耗10积分
-          </Text>
-        )}
+      {/* 语气、语言 下拉选择器 + 发送按钮 水平对齐 */}
+      <HStack spacing={3} mt={2} w="full" justify="space-between">
+        <HStack spacing={3}>
+          {/* 目标语言 */}
+          <Popover isOpen={langDisclosure.isOpen} onClose={langDisclosure.onClose}>
+            <PopoverTrigger>
+              <Button size="sm" variant="outline" onClick={langDisclosure.onOpen}>
+                                    {t('quickTranslate.translateTo')}：{selectedLangLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent w="120px">
+              <PopoverArrow />
+              <PopoverCloseButton />
+              <PopoverBody>
+                <VStack align="stretch" spacing={1}>
+                  {languageOptions.map(option => (
+                    <Button
+                      key={option.key}
+                      size="sm"
+                      variant={selectedLanguage === option.key ? "solid" : "ghost"}
+                      colorScheme="blue"
+                      onClick={() => handleLanguageSelect(option.key)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </VStack>
+              </PopoverBody>
+            </PopoverContent>
+          </Popover>
+          {/* 语气 */}
+          <Popover isOpen={toneDisclosure.isOpen} onClose={toneDisclosure.onClose}>
+            <PopoverTrigger>
+              <Button size="sm" variant="outline" onClick={toneDisclosure.onOpen}>
+                                    {t('quickTranslate.tone')}：{selectedToneLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent w="120px">
+              <PopoverArrow />
+              <PopoverCloseButton />
+              <PopoverBody>
+                <VStack align="stretch" spacing={1}>
+                  {toneOptions.map(option => (
+                    <Button
+                      key={option.key}
+                      size="sm"
+                      variant={selectedTone === option.key ? "solid" : "ghost"}
+                      colorScheme="green"
+                      onClick={() => handleToneSelect(option.key)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </VStack>
+              </PopoverBody>
+            </PopoverContent>
+          </Popover>
+        </HStack>
+        <HStack spacing={2}>
+          <IconButton 
+            aria-label="发送" 
+            icon={isLoading ? <Spinner size="sm" /> : <FaPaperPlane />} 
+            colorScheme="purple" 
+            isRound 
+            size="md" 
+            onClick={handleTranslate}
+            isDisabled={!inputText.trim() || isLoading}
+            isLoading={isLoading}
+          />
+          {inputText.trim() && (
+            isFreeUser ? (
+              <HStack 
+                spacing={1} 
+                bg="purple.50" 
+                _dark={{ bg: 'purple.900', borderColor: 'purple.700' }}
+                px={2} 
+                py={1} 
+                borderRadius="md"
+                border="1px solid"
+                borderColor="purple.200"
+              >
+                <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
+                  {t('credits.remainingFreeChats')}：
+                </Text>
+                <Text fontSize="xs" color="purple.700" _dark={{ color: 'purple.200' }} fontWeight="bold">
+                  {freeQuota - freeUsed}/{freeQuota}
+                </Text>
+              </HStack>
+            ) : (
+              <HStack 
+                spacing={1} 
+                bg="purple.50" 
+                _dark={{ bg: 'purple.900', borderColor: 'purple.700' }}
+                px={2} 
+                py={1} 
+                borderRadius="md"
+                border="1px solid"
+                borderColor="purple.200"
+              >
+                <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
+                  消耗
+                </Text>
+                <Text fontSize="xs" color="purple.700" _dark={{ color: 'purple.200' }} fontWeight="bold">
+                  {creditCost}积分
+                </Text>
+              </HStack>
+            )
+          )}
+        </HStack>
       </HStack>
     </VStack>
   );

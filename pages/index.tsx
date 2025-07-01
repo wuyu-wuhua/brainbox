@@ -86,8 +86,11 @@ export default function Home() {
   const toast = useToast();
   const router = useRouter();
   const { t } = useLanguage();
-  const { addFavorite, addActivity, userStats, getUserQuota } = useUserActivity();
+
+  const { addFavorite, addActivity, userStats, getUserQuota, checkFreeQuotaExceeded, getRemainingFreeQuota } = useUserActivity();
   const { user } = useAuth();
+  const isHistoryRestored = useRef(false);
+
 
   // 判断是否免费用户
   const isFreeUser = getUserQuota('conversation') !== Infinity;
@@ -120,53 +123,54 @@ export default function Home() {
   useEffect(() => {
     // 检查是否需要加载历史记录
     const { loadHistory } = router.query;
-    if (loadHistory && typeof loadHistory === 'string') {
-      const histories = getHistories();
-      const targetHistory = histories.find(h => h.id === loadHistory);
-      if (targetHistory && targetHistory.type === 'chat') {
-        console.log('=== 开始加载历史记录 ===');
-        console.log('目标历史记录ID:', targetHistory.id);
-        console.log('历史记录消息数量:', targetHistory.messages.length);
-        
-        // 立即清除所有可能影响状态的标记
-        if (typeof window !== 'undefined') {
-          sessionStorage.removeItem('newChatSession');
-          sessionStorage.removeItem('fromOtherPage');
-          sessionStorage.setItem('loadingHistory', 'true');
-        }
-        
-        // 清除页面状态，避免冲突
-        pageStateManager.clearPageState('chat');
-        
-        // 立即设置消息和会话ID
-        setMessages(targetHistory.messages);
-        setSelectedModel(targetHistory.model || 'DeepSeek-R1-0528');
-        setChatMode('default');
-        setIsLoading(false);
-        setStreamingMessage('');
-        setIsNewSession(false);
-        setCurrentSessionId(targetHistory.id);
-        currentSessionIdRef.current = targetHistory.id;
-        
-        console.log('设置完成，当前会话ID:', targetHistory.id);
-        console.log('当前消息数量:', targetHistory.messages.length);
-        
-        // 延迟清除标记，确保状态已设置
-        setTimeout(() => {
-          if (typeof window !== 'undefined') {
-            sessionStorage.removeItem('loadingHistory');
-          }
-        }, 100);
-        
-        console.log('=== 历史记录加载完成 ===');
-        
-        toast({
-          title: '已加载历史记录',
-          description: `已恢复 ${targetHistory.messages.length} 条对话记录`,
-          status: 'success',
-          duration: 2000,
-        });
+    let targetHistory = null;
+    // 优先从sessionStorage读取完整历史对象
+    if (typeof window !== 'undefined') {
+      const pending = sessionStorage.getItem('pendingHistory');
+      if (pending) {
+        targetHistory = JSON.parse(pending);
+        sessionStorage.removeItem('pendingHistory');
       }
+    }
+    if (!targetHistory && loadHistory && typeof loadHistory === 'string') {
+      const histories = getHistories();
+      targetHistory = histories.find(h => h.id === loadHistory);
+    }
+    if (targetHistory && (targetHistory.type === 'chat' || targetHistory.type === 'read')) {
+      console.log('=== 开始加载历史记录 ===');
+      console.log('目标历史记录ID:', targetHistory.id);
+      console.log('历史记录类型:', targetHistory.type);
+      console.log('历史记录消息数量:', targetHistory.messages.length);
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('newChatSession');
+        sessionStorage.removeItem('fromOtherPage');
+        sessionStorage.setItem('loadingHistory', 'true');
+      }
+      pageStateManager.clearPageState('chat');
+      setMessages(targetHistory.messages);
+      setSelectedModel(targetHistory.model || 'DeepSeek-R1-0528');
+      setChatMode('default');
+      setIsLoading(false);
+      setStreamingMessage('');
+      setIsNewSession(false);
+      setCurrentSessionId(targetHistory.id);
+      currentSessionIdRef.current = targetHistory.id;
+      isHistoryRestored.current = true; // 标记已还原历史
+      console.log('设置完成，当前会话ID:', targetHistory.id);
+      console.log('当前消息数量:', targetHistory.messages.length);
+      setTimeout(() => {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('loadingHistory');
+        }
+      }, 100);
+      console.log('=== 历史记录加载完成 ===');
+      toast({
+        title: '已加载历史记录',
+        description: `${t('history.restored')} ${targetHistory.type === 'read' ? t('history.documentChat') : t('history.chat')} - ${targetHistory.messages.length} ${t('history.records')}`,
+        status: 'success',
+        duration: 2000,
+      });
+
     }
   }, [router.query.loadHistory]);
 
@@ -176,31 +180,23 @@ export default function Home() {
 
   // 页面加载时恢复状态
   useEffect(() => {
+
+    if (isHistoryRestored.current) return; // 已还原历史，跳过
     if (user) {
-      // 检查URL参数中是否有历史记录加载请求
       const { loadHistory } = router.query;
-      
       if (loadHistory && typeof loadHistory === 'string') {
-        // 如果是加载历史记录，不执行状态恢复逻辑
         return;
       }
-      
-      // 检查是否正在加载历史记录
       const isLoadingHistory = typeof window !== 'undefined' ? 
         sessionStorage.getItem('loadingHistory') : null;
-      
       if (isLoadingHistory === 'true') {
-        // 如果正在加载历史记录，不执行任何状态恢复逻辑
         console.log('正在加载历史记录，跳过状态恢复');
         return;
       }
-      
-      // 检查是否是新建对话状态
       const isNewChatSession = typeof window !== 'undefined' ? 
         sessionStorage.getItem('newChatSession') : null;
-      
       if (isNewChatSession === 'true') {
-        // 如果是新建对话，清除状态并重置
+
         setMessages([]);
         setInputValue('');
         setCurrentSessionId('');
@@ -210,21 +206,16 @@ export default function Home() {
         setIsLoading(false);
         setStreamingMessage('');
         pageStateManager.clearPageState('chat');
-        
-        // 清除标记
+
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('newChatSession');
         }
-        
         console.log('检测到新建对话状态，已重置聊天界面');
       } else {
-        // 检查是否从其他页面切换回来 - 总是显示新建对话界面
         const fromOtherPage = typeof window !== 'undefined' ? 
           sessionStorage.getItem('fromOtherPage') : null;
-          
-        // 只要从其他页面来，或者没有当前会话，就显示新建对话
         if (fromOtherPage === 'true' || !currentSessionId) {
-          // 从其他页面切换回来或没有活跃会话，显示新建对话界面
+
           setMessages([]);
           setInputValue('');
           setCurrentSessionId('');
@@ -234,15 +225,13 @@ export default function Home() {
           setIsLoading(false);
           setStreamingMessage('');
           pageStateManager.clearPageState('chat');
-          
-          // 清除标记
+
           if (typeof window !== 'undefined') {
             sessionStorage.removeItem('fromOtherPage');
           }
-          
           console.log('从其他页面返回或无活跃会话，显示新建对话界面');
         } else {
-          // 正常的页面状态恢复
+
           restorePageState();
         }
       }
@@ -251,6 +240,8 @@ export default function Home() {
 
   // 页面状态变化时自动保存
   useEffect(() => {
+    if (isHistoryRestored.current) return; // 历史还原后不自动保存
+
     if (user && messages.length > 0) {
       saveCurrentState();
     }
@@ -258,16 +249,18 @@ export default function Home() {
 
   // 页面卸载时保存状态
   useEffect(() => {
+
+    if (isHistoryRestored.current) return;
     const handleBeforeUnload = () => {
-      if (user) {
+      if (user && messages.length > 0) {
         saveCurrentState();
       }
     };
-
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      if (user) {
+      if (user && messages.length > 0) {
+
         saveCurrentState();
       }
     };
@@ -275,9 +268,10 @@ export default function Home() {
 
   // 监听认证状态变化
   useEffect(() => {
+    if (isHistoryRestored.current) return;
     const handleAuthStateChange = () => {
       if (!user) {
-        // 用户退出登录，立即清空聊天状态
+
         setMessages([])
         setCurrentSessionId(null)
         currentSessionIdRef.current = null
@@ -286,17 +280,14 @@ export default function Home() {
         setInputValue('')
         sessionStorage.removeItem('newChatSession');
       } else {
-        // 用户登录，恢复状态
         const isNewChatSession = sessionStorage.getItem('newChatSession');
         if (isNewChatSession !== 'true') {
           restorePageState()
         }
       }
     }
-
-    // 监听认证状态变化事件
     window.addEventListener('auth-state-changed', handleAuthStateChange)
-    
+
     return () => {
       window.removeEventListener('auth-state-changed', handleAuthStateChange)
     }
@@ -304,14 +295,14 @@ export default function Home() {
 
   // 监听历史记录更新事件
   useEffect(() => {
+
+    if (isHistoryRestored.current) return;
     const handleHistoryUpdate = () => {
-      // 当历史记录更新时，检查当前会话是否还存在
+
       if (currentSessionId) {
         const histories = getHistories();
         const currentHistory = histories.find(h => h.id === currentSessionId);
         if (!currentHistory) {
-          // 如果当前会话被删除，重置为新建对话状态
-          console.log('当前会话已被删除，重置状态');
           setMessages([]);
           setCurrentSessionId('');
           currentSessionIdRef.current = '';
@@ -319,14 +310,10 @@ export default function Home() {
         }
       }
     };
-
-    // 监听storage变化事件
     if (typeof window !== 'undefined') {
       window.addEventListener('storage', handleHistoryUpdate);
-      
-      // 定期检查历史记录状态
       const interval = setInterval(handleHistoryUpdate, 1000);
-      
+
       return () => {
         window.removeEventListener('storage', handleHistoryUpdate);
         clearInterval(interval);
@@ -349,11 +336,14 @@ export default function Home() {
       return;
     }
 
-    // 新增：免费额度判断
-    if (userStats.conversations >= getUserQuota('conversation')) {
+
+    // 新增：免费额度判断（基于数据库存储的免费额度）
+    if (checkFreeQuotaExceeded('conversation')) {
+      const remaining = getRemainingFreeQuota('conversation');
       toast({
-        title: '已达免费额度上限',
-        description: '请开通会员享受更多权益',
+        title: '已达免费对话上限',
+        description: `您已用完 ${userStats.free_conversations_limit} 次免费对话，请开通会员享受更多权益`,
+
         status: 'warning',
         duration: 4000,
       });
@@ -436,11 +426,21 @@ export default function Home() {
                 setMessages(finalMessages);
                 
                 // 添加对话活动记录
-                await addActivity({
-                  type: 'conversation',
-                  title: 'AI对话',
-                  description: newMessage.content.slice(0, 100) + (newMessage.content.length > 100 ? '...' : '')
-                });
+
+                console.log('=== 准备添加对话活动记录 ===');
+                console.log('用户信息:', user);
+                console.log('当前统计数据:', userStats);
+                try {
+                  await addActivity({
+                    type: 'conversation',
+                    title: 'AI对话',
+                    description: newMessage.content.slice(0, 100) + (newMessage.content.length > 100 ? '...' : '')
+                  });
+                  console.log('✅ 对话活动记录添加成功');
+                } catch (error) {
+                  console.error('❌ 对话活动记录添加失败:', error);
+                }
+
                 
                 // 保存或更新历史记录
                 const sessionIdToUse = currentSessionIdRef.current;
@@ -603,11 +603,19 @@ export default function Home() {
                 setMessages(finalMessages);
                 
                 // 添加对话活动记录
-                addActivity({
-                  type: 'conversation',
-                  title: 'AI对话',
-                  description: userMessage.content.slice(0, 100) + (userMessage.content.length > 100 ? '...' : '')
-                });
+
+                console.log('=== 特殊模式准备添加对话活动记录 ===');
+                try {
+                  await addActivity({
+                    type: 'conversation',
+                    title: 'AI对话',
+                    description: userMessage.content.slice(0, 100) + (userMessage.content.length > 100 ? '...' : '')
+                  });
+                  console.log('✅ 特殊模式对话活动记录添加成功');
+                } catch (error) {
+                  console.error('❌ 特殊模式对话活动记录添加失败:', error);
+                }
+
                 
                 // 保存或更新历史记录
                 const sessionIdToUse = currentSessionIdRef.current;
@@ -709,17 +717,17 @@ export default function Home() {
     console.log('历史记录消息数量:', history.messages.length);
     console.log('当前currentSessionId:', currentSessionId);
     console.log('当前currentSessionIdRef.current:', currentSessionIdRef.current);
-    
+
     // 清除所有可能影响状态的标记
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('newChatSession');
       sessionStorage.removeItem('fromOtherPage');
       sessionStorage.removeItem('loadingHistory');
     }
-    
+
     // 清除页面状态，避免冲突
     pageStateManager.clearPageState('chat');
-    
+
     // 立即设置所有状态
     setMessages(history.messages || []);
     setSelectedModel(history.model || 'DeepSeek-R1-0528');
@@ -729,17 +737,13 @@ export default function Home() {
     setIsNewSession(false);
     setCurrentSessionId(history.id);
     currentSessionIdRef.current = history.id;
-    
-    // 更新URL，但不触发页面重新加载
-    router.replace({
-      pathname: '/',
-      query: { loadHistory: history.id }
-    }, undefined, { shallow: true });
-    
+
+    // 不再更新URL参数！！！
+    // router.replace({ pathname: '/', query: { loadHistory: history.id } }, undefined, { shallow: true });
     console.log('设置完成，当前会话ID:', history.id);
     console.log('当前消息数量:', history.messages?.length || 0);
     console.log('=== 直接加载历史记录结束 ===');
-    
+
     toast({
       title: '已加载历史记录',
       description: `已恢复 ${history.messages?.length || 0} 条对话记录`,
@@ -852,11 +856,19 @@ export default function Home() {
                 setMessages(finalMessages);
                 
                 // 添加对话活动记录
-                addActivity({
-                  type: 'conversation',
-                  title: 'AI对话',
-                  description: messagesUpToUser[messagesUpToUser.length - 1].content.slice(0, 100) + (messagesUpToUser[messagesUpToUser.length - 1].content.length > 100 ? '...' : '')
-                });
+
+                console.log('=== 重新生成准备添加对话活动记录 ===');
+                try {
+                  await addActivity({
+                    type: 'conversation',
+                    title: 'AI对话',
+                    description: messagesUpToUser[messagesUpToUser.length - 1].content.slice(0, 100) + (messagesUpToUser[messagesUpToUser.length - 1].content.length > 100 ? '...' : '')
+                  });
+                  console.log('✅ 重新生成对话活动记录添加成功');
+                } catch (error) {
+                  console.error('❌ 重新生成对话活动记录添加失败:', error);
+                }
+
                 
                 // 保存或更新历史记录
                 const sessionIdToUse = currentSessionIdRef.current;
@@ -930,7 +942,9 @@ export default function Home() {
 
   // 页面状态管理
   const saveCurrentState = () => {
-    if (user) {
+
+    if (user && messages.length > 0) {
+
       pageStateManager.savePageState('chat', {
         messages: messages,
         selectedModel,
@@ -993,12 +1007,9 @@ export default function Home() {
     setIsLoading(false);
     setStreamingMessage('');
     pageStateManager.clearPageState('chat');
-    
-    // 设置新建对话标记，用于页面切换时保持新对话状态
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('newChatSession', 'true');
     }
-    
     toast({
       title: t('session.newChatStarted'),
       status: 'success',
@@ -1176,10 +1187,11 @@ export default function Home() {
                     </>
                   ) : (
                     <Box>
-                      {chatMode === 'write' && <WriteView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} />}
-                      {chatMode === 'translate' && <TranslateView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} selectedModel={models.find(m => m.name === selectedModel)} />}
-                      {chatMode === 'travel' && <TravelView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} />}
-                      {chatMode === 'script' && <ScriptView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} />}
+                      {chatMode === 'write' && <WriteView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
+                      {chatMode === 'translate' && <TranslateView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} selectedModel={models.find(m => m.name === selectedModel)} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
+                      {chatMode === 'travel' && <TravelView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
+                      {chatMode === 'script' && <ScriptView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
+
                       {chatMode === 'video' && <VideoView onClose={() => setChatMode('default')} />}
                     </Box>
                   )}
@@ -1351,10 +1363,11 @@ export default function Home() {
                       </>
                     ) : (
                       <Box>
-                        {chatMode === 'write' && <WriteView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} />}
-                        {chatMode === 'translate' && <TranslateView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} selectedModel={models.find(m => m.name === selectedModel)} />}
-                        {chatMode === 'travel' && <TravelView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} />}
-                        {chatMode === 'script' && <ScriptView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} />}
+                        {chatMode === 'write' && <WriteView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
+                        {chatMode === 'translate' && <TranslateView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} selectedModel={models.find(m => m.name === selectedModel)} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
+                        {chatMode === 'travel' && <TravelView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
+                        {chatMode === 'script' && <ScriptView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
+
                         {chatMode === 'video' && <VideoView onClose={() => setChatMode('default')} />}
                       </Box>
                     )}

@@ -9,9 +9,14 @@ import {
   getHistoriesFromDB,
   saveUserStatsToDB,
   getUserStatsFromDB,
-  deleteHistoryFromDB
+  deleteHistoryFromDB,
+  saveCompleteUserStatsToDB,
+  getCompleteUserStatsFromDB,
+  forceUpdateUserStats,
+  forceAddActivity
 } from '../utils/databaseStorage'
 import { ChatHistory } from '../types/chat'
+import { getCurrentTimeString } from '../utils/dateUtils'
 
 interface UserStats {
   conversations: number
@@ -19,6 +24,16 @@ interface UserStats {
   documents: number
   videos: number
   credits: number
+  // 免费额度使用情况
+  free_conversations_used: number
+  free_images_used: number
+  free_documents_used: number
+  free_videos_used: number
+  // 免费额度限制
+  free_conversations_limit: number
+  free_images_limit: number
+  free_documents_limit: number
+  free_videos_limit: number
 }
 
 interface Activity {
@@ -50,6 +65,9 @@ interface UserActivityContextType {
   updateStats: (type: keyof UserStats, increment?: number) => void
   clearUserData: () => void
   getUserQuota: (type: 'conversation' | 'image' | 'document' | 'video') => number
+  refreshHistories: () => Promise<void>
+  checkFreeQuotaExceeded: (type: 'conversation' | 'image' | 'document' | 'video') => boolean
+  getRemainingFreeQuota: (type: 'conversation' | 'image' | 'document' | 'video') => number
 }
 
 const UserActivityContext = createContext<UserActivityContextType | undefined>(undefined)
@@ -105,6 +123,16 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
     documents: 0,
     videos: 0,
     credits: 10000, // 默认给新用户10000积分
+    // 免费额度使用情况
+    free_conversations_used: 0,
+    free_images_used: 0,
+    free_documents_used: 0,
+    free_videos_used: 0,
+    // 免费额度限制
+    free_conversations_limit: 50,
+    free_images_limit: 5,
+    free_documents_limit: 50,
+    free_videos_limit: 2,
   })
   
   const [recentActivities, setRecentActivities] = useState<Activity[]>([])
@@ -129,23 +157,87 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   useEffect(() => {
     if (user && !hasLoaded) {
-      // 先本地兜底
+      // 立即从本地加载数据
       const userId = user.id;
+      
+      // 加载历史记录
       const localHistories = localStorage.getItem(`chatHistories_${userId}`);
       if (localHistories) setHistories(JSON.parse(localHistories));
+      
+      // 加载收藏
       const localFavorites = localStorage.getItem(`userFavorites_${userId}`);
       if (localFavorites) setFavorites(JSON.parse(localFavorites));
+      
+      // 加载统计数据
+      const localStats = localStorage.getItem(`userStats_${userId}`);
+      if (localStats) {
+        try {
+          setUserStats(JSON.parse(localStats));
+        } catch (error) {
+          console.error('解析本地统计数据失败:', error);
+        }
+      }
+      
+      // 加载活动记录
+      const localActivities = localStorage.getItem(`userActivities_${userId}`);
+      if (localActivities) {
+        try {
+          setRecentActivities(JSON.parse(localActivities));
+        } catch (error) {
+          console.error('解析本地活动数据失败:', error);
+        }
+      }
+      
       setLoading(true);
+      // 后台同步数据库数据
       loadUserData().finally(() => {
         setLoading(false);
         setHasLoaded(true);
       });
     } else if (!user) {
+      // 用户未登录，重置所有数据
       setHistories([]);
       setFavorites([]);
+      setUserStats({
+        conversations: 0,
+        images: 0,
+        documents: 0,
+        videos: 0,
+        credits: 10000,
+        free_conversations_used: 0,
+        free_images_used: 0,
+        free_documents_used: 0,
+        free_videos_used: 0,
+        free_conversations_limit: 50,
+        free_images_limit: 5,
+        free_documents_limit: 50,
+        free_videos_limit: 2,
+      });
+      setRecentActivities([]);
       setLoading(false);
       setHasLoaded(false);
     }
+  }, [user])
+
+  // 监听历史记录更新事件
+  useEffect(() => {
+    if (!user) return;
+
+    // 监听来自storage.ts的历史记录更新
+    const handleHistoryUpdated = () => {
+      const userId = user.id;
+      const localHistories = localStorage.getItem(`user_${userId}_chat_histories`);
+      if (localHistories) {
+        const histories = JSON.parse(localHistories);
+        setHistories(histories);
+      }
+    };
+
+    window.addEventListener('history-updated', handleHistoryUpdated);
+
+    return () => {
+      window.removeEventListener('history-updated', handleHistoryUpdated);
+    };
   }, [user])
 
   const clearUserData = () => {
@@ -155,6 +247,14 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
       documents: 0,
       videos: 0,
       credits: 10000, // 重置时也给10000积分
+      free_conversations_used: 0,
+      free_images_used: 0,
+      free_documents_used: 0,
+      free_videos_used: 0,
+      free_conversations_limit: 50,
+      free_images_limit: 5,
+      free_documents_limit: 50,
+      free_videos_limit: 2,
     })
     setRecentActivities([])
     setFavorites([])
@@ -165,11 +265,19 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
     if (!user) return
     const userId = user.id
     try {
-      // 历史记录
-      const dbHistories = await getHistoriesFromDB()
-      if (dbHistories && dbHistories.length > 0) {
-        setHistories(dbHistories)
-        localStorage.setItem(`chatHistories_${userId}`, JSON.stringify(dbHistories))
+      // 历史记录 - 使用storage.ts中的混合存储方式
+      try {
+        const { getHistoriesAsync } = await import('../utils/storage');
+        const histories = await getHistoriesAsync();
+        if (histories && histories.length > 0) {
+          setHistories(histories);
+        }
+      } catch (error) {
+        console.error('获取历史记录失败，使用本地数据:', error);
+        // 如果数据库失败，使用本地数据
+        const { getHistories } = await import('../utils/storage');
+        const localHistories = getHistories();
+        setHistories(localHistories);
       }
       // 活动（历史）
       const dbActivities = await getUserActivitiesFromDB(100)
@@ -178,7 +286,7 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
           id: a.id || a.created_at || Date.now().toString(),
           type: a.type,
           title: a.title,
-          timestamp: a.created_at || a.timestamp || new Date().toLocaleString('zh-CN'),
+          timestamp: a.created_at || a.timestamp || getCurrentTimeString(),
           description: a.description || ''
         }))
         setRecentActivities(activities)
@@ -192,28 +300,34 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
           type: f.item_type,
           title: f.title,
           description: f.content?.description || (typeof f.content === 'string' ? JSON.parse(f.content).description : ''),
-          timestamp: f.content?.timestamp || f.created_at || new Date().toISOString().split('T')[0]
+          timestamp: f.created_at || f.content?.timestamp || getCurrentTimeString()
         }))
         setFavorites(favs)
         localStorage.setItem(`userFavorites_${userId}`, JSON.stringify(favs))
       }
-      // 拉取 Supabase 统计
-      const dbStats = await getUserStatsFromDB();
-      if (dbStats) {
-        setUserStats({
-          conversations: dbStats.total_conversations || 0,
-          images: dbStats.total_images || 0,
-          documents: dbStats.total_documents || 0,
-          videos: dbStats.total_videos || 0,
-          credits: dbStats.credits || 10000,
-        });
-        localStorage.setItem(`userStats_${userId}`, JSON.stringify({
-          conversations: dbStats.total_conversations || 0,
-          images: dbStats.total_images || 0,
-          documents: dbStats.total_documents || 0,
-          videos: dbStats.total_videos || 0,
-          credits: dbStats.credits || 10000,
-        }));
+      // 尝试从数据库获取完整统计数据（仅作为备份同步）
+      const dbStats = await getCompleteUserStatsFromDB();
+      if (dbStats && (dbStats.conversations > 0 || dbStats.images > 0 || dbStats.documents > 0 || dbStats.videos > 0)) {
+        // 只有当数据库有有效数据时才考虑同步，取本地和数据库中的较大值
+        const currentStats = {
+          conversations: Math.max(userStats.conversations, dbStats.conversations),
+          images: Math.max(userStats.images, dbStats.images),
+          documents: Math.max(userStats.documents, dbStats.documents),
+          videos: Math.max(userStats.videos, dbStats.videos),
+          credits: dbStats.credits || userStats.credits || 10000,
+          // 免费额度使用情况从数据库同步（保持精确性）
+          free_conversations_used: dbStats.free_conversations_used || 0,
+          free_images_used: dbStats.free_images_used || 0,
+          free_documents_used: dbStats.free_documents_used || 0,
+          free_videos_used: dbStats.free_videos_used || 0,
+          // 免费额度限制（可从数据库调整）
+          free_conversations_limit: dbStats.free_conversations_limit || 50,
+          free_images_limit: dbStats.free_images_limit || 5,
+          free_documents_limit: dbStats.free_documents_limit || 50,
+          free_videos_limit: dbStats.free_videos_limit || 2,
+        };
+        setUserStats(currentStats);
+        localStorage.setItem(`userStats_${userId}`, JSON.stringify(currentStats));
       }
     } catch (e) {
       // 兜底本地
@@ -238,48 +352,96 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
   }
 
   const addActivity = async (activity: Omit<Activity, 'id' | 'timestamp'>) => {
-    if (!user) return
+    console.log('=== UserActivityContext.addActivity 开始 ===');
+    console.log('用户信息:', user);
+    console.log('活动信息:', activity);
+    console.log('当前统计数据:', userStats);
+    
+    if (!user) {
+      console.log('❌ 用户未登录，跳过添加活动');
+      return;
+    }
 
     const newActivity: Activity = {
       ...activity,
       id: Date.now().toString(),
-      timestamp: new Date().toLocaleString('zh-CN'),
+      timestamp: getCurrentTimeString(),
     }
 
     // 立即更新本地状态
     const updatedActivities = [newActivity, ...recentActivities.slice(0, 9)]
     setRecentActivities(updatedActivities)
 
+    // 更新总计数
+    const statKey = activity.type === 'conversation' ? 'conversations' : 
+                   activity.type === 'image' ? 'images' : 
+                   activity.type === 'document' ? 'documents' : 'videos';
+    
+    // 更新免费额度使用计数
+    const freeUsedKey = activity.type === 'conversation' ? 'free_conversations_used' : 
+                       activity.type === 'image' ? 'free_images_used' : 
+                       activity.type === 'document' ? 'free_documents_used' : 'free_videos_used';
+    
     const updatedStats = {
       ...userStats,
-      [activity.type === 'conversation' ? 'conversations' : 
-       activity.type === 'image' ? 'images' : 
-       activity.type === 'document' ? 'documents' : 'videos']: 
-       userStats[activity.type === 'conversation' ? 'conversations' : 
-                 activity.type === 'image' ? 'images' : 
-                 activity.type === 'document' ? 'documents' : 'videos'] + 1
+      [statKey]: userStats[statKey] + 1,
+      [freeUsedKey]: userStats[freeUsedKey] + 1
     }
+    console.log('更新后的统计数据:', updatedStats);
     setUserStats(updatedStats)
     saveUserData(updatedStats, updatedActivities, favorites)
 
-    // 同时保存到数据库
+    // 使用强制保存方法保存到数据库
+    console.log('准备使用强制方法保存活动到数据库...');
     try {
-      await addActivityToDB({
+      const result = await forceAddActivity({
         type: activity.type,
         title: activity.title,
         description: activity.description
-      })
-      console.log('活动已保存到数据库')
+      });
+      if (result) {
+        console.log('✅ 活动已通过强制方法保存到数据库');
+      } else {
+        console.log('❌ 活动强制保存到数据库失败（方法返回false）');
+        // 如果强制方法失败，尝试原方法作为备份
+        console.log('尝试使用原方法作为备份...');
+        const backupResult = await addActivityToDB({
+          type: activity.type,
+          title: activity.title,
+          description: activity.description
+        });
+        if (backupResult) {
+          console.log('✅ 活动通过备份方法保存成功');
+        } else {
+          console.log('❌ 活动备份方法也失败');
+        }
+      }
     } catch (error) {
-      console.error('保存活动到数据库失败:', error)
+      console.error('❌ 强制保存活动到数据库异常:', error);
     }
 
-    // 新增：同步到 Supabase
-    saveUserStatsToDB({
-      total_conversations: updatedStats.conversations,
-      total_messages: updatedStats.images + updatedStats.documents + updatedStats.videos, // 合并为消息数
-      // credits 字段如有需要可加到 favorite_model 或扩展表结构
-    });
+    // 使用强制方法同步完整统计数据到数据库
+    console.log('准备使用强制方法保存完整统计数据到数据库...');
+    try {
+      const statsResult = await forceUpdateUserStats(updatedStats);
+      if (statsResult) {
+        console.log('✅ 完整统计数据已通过强制方法保存到数据库');
+      } else {
+        console.log('❌ 统计数据强制保存到数据库失败（方法返回false）');
+        // 如果强制方法失败，尝试原方法作为备份
+        console.log('尝试使用原方法作为备份...');
+        const backupResult = await saveCompleteUserStatsToDB(updatedStats);
+        if (backupResult) {
+          console.log('✅ 统计数据通过备份方法保存成功');
+        } else {
+          console.log('❌ 统计数据备份方法也失败');
+        }
+      }
+    } catch (error) {
+      console.error('❌ 强制保存完整统计数据到数据库异常:', error);
+    }
+    
+    console.log('=== UserActivityContext.addActivity 结束 ===');
   }
 
   const addFavorite = async (favorite: Omit<Favorite, 'id' | 'timestamp'>) => {
@@ -288,7 +450,7 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
     const newFavorite: Favorite = {
       ...favorite,
       id: Date.now().toString(),
-      timestamp: new Date().toISOString().split('T')[0],
+      timestamp: getCurrentTimeString(),
     }
 
     // 立即更新本地状态
@@ -312,12 +474,8 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
       console.error('保存收藏到数据库失败:', error)
     }
 
-    // 新增：同步到 Supabase
-    saveUserStatsToDB({
-      total_conversations: userStats.conversations,
-      total_messages: userStats.images + userStats.documents + userStats.videos, // 合并为消息数
-      // credits 字段如有需要可加到 favorite_model 或扩展表结构
-    });
+    // 同步完整统计数据到数据库
+    saveCompleteUserStatsToDB(userStats);
   }
 
   const removeFavorite = async (id: string) => {
@@ -338,7 +496,7 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
         type: f.item_type,
         title: f.title,
         description: f.content?.description || (typeof f.content === 'string' ? JSON.parse(f.content).description : ''),
-        timestamp: f.content?.timestamp || f.created_at || new Date().toISOString().split('T')[0]
+        timestamp: f.created_at || f.content?.timestamp || getCurrentTimeString()
       }))
       setFavorites(favs)
       localStorage.setItem(`userFavorites_${user.id}`, JSON.stringify(favs))
@@ -346,12 +504,8 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
       console.error('从数据库删除收藏失败:', error)
     }
 
-    // 新增：同步到 Supabase
-    saveUserStatsToDB({
-      total_conversations: userStats.conversations,
-      total_messages: userStats.images + userStats.documents + userStats.videos, // 合并为消息数
-      // credits 字段如有需要可加到 favorite_model 或扩展表结构
-    });
+    // 同步完整统计数据到数据库
+    saveCompleteUserStatsToDB(userStats);
   }
 
   const removeHistory = async (id: string) => {
@@ -380,13 +534,52 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
     }
     setUserStats(updatedStats)
     saveUserData(updatedStats, recentActivities, favorites)
-    // 新增：同步到 Supabase
-    saveUserStatsToDB({
-      total_conversations: updatedStats.conversations,
-      total_messages: updatedStats.images + updatedStats.documents + updatedStats.videos, // 合并为消息数
-      // credits 字段如有需要可加到 favorite_model 或扩展表结构
+    // 使用强制方法同步完整统计数据到数据库
+    console.log('updateStats - 使用强制方法保存统计数据:', updatedStats);
+    forceUpdateUserStats(updatedStats).then(result => {
+      if (result) {
+        console.log('✅ updateStats - 统计数据强制保存成功');
+      } else {
+        console.log('❌ updateStats - 统计数据强制保存失败，尝试备份方法');
+        saveCompleteUserStatsToDB(updatedStats);
+      }
+    }).catch(error => {
+      console.error('❌ updateStats - 强制保存异常，尝试备份方法:', error);
+      saveCompleteUserStatsToDB(updatedStats);
     });
   }
+
+  // 检查免费额度是否超出
+  const checkFreeQuotaExceeded = (type: 'conversation' | 'image' | 'document' | 'video'): boolean => {
+    switch (type) {
+      case 'conversation':
+        return userStats.free_conversations_used >= userStats.free_conversations_limit;
+      case 'image':
+        return userStats.free_images_used >= userStats.free_images_limit;
+      case 'document':
+        return userStats.free_documents_used >= userStats.free_documents_limit;
+      case 'video':
+        return userStats.free_videos_used >= userStats.free_videos_limit;
+      default:
+        return false;
+    }
+  };
+
+  // 获取剩余免费额度
+  const getRemainingFreeQuota = (type: 'conversation' | 'image' | 'document' | 'video'): number => {
+    switch (type) {
+      case 'conversation':
+        return Math.max(0, userStats.free_conversations_limit - userStats.free_conversations_used);
+      case 'image':
+        return Math.max(0, userStats.free_images_limit - userStats.free_images_used);
+      case 'document':
+        return Math.max(0, userStats.free_documents_limit - userStats.free_documents_used);
+      case 'video':
+        return Math.max(0, userStats.free_videos_limit - userStats.free_videos_used);
+      default:
+        return 0;
+    }
+  };
 
   return (
     <UserActivityContext.Provider
@@ -403,6 +596,9 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
         updateStats,
         clearUserData,
         getUserQuota: (type: 'conversation' | 'image' | 'document' | 'video') => getUserQuota(type, user),
+        refreshHistories: loadUserData,
+        checkFreeQuotaExceeded,
+        getRemainingFreeQuota,
       }}
     >
       {children}

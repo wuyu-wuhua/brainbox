@@ -28,9 +28,20 @@ import { Message } from '../../types/chat';
 interface WriteViewProps {
   onClose: () => void;
   onSendMessage: (message: Message, aiResponse?: Message, aiPrompt?: string) => void;
+  isFreeUser?: boolean;
+  freeQuota?: number;
+  freeUsed?: number;
+  creditCost?: number;
 }
 
-const WriteView: React.FC<WriteViewProps> = ({ onClose, onSendMessage }) => {
+const WriteView: React.FC<WriteViewProps> = ({ 
+  onClose, 
+  onSendMessage,
+  isFreeUser = false,
+  freeQuota = 0,
+  freeUsed = 0,
+  creditCost = 5,
+}) => {
   const { t } = useLanguage();
   const toast = useToast();
   
@@ -208,24 +219,142 @@ const WriteView: React.FC<WriteViewProps> = ({ onClose, onSendMessage }) => {
         onChange={(e) => setInputText(e.target.value)}
         isDisabled={isLoading}
       />
-      
-      {/* Footer */}
-      <HStack justify="flex-end" w="full" mt={2}>
-        <IconButton 
-          aria-label="发送" 
-          icon={isLoading ? <Spinner size="sm" /> : <FaPaperPlane />} 
-          colorScheme="purple" 
-          isRound 
-          size="md" 
-          onClick={handleWrite}
-          isDisabled={!inputText.trim() || isLoading}
-          isLoading={isLoading}
-        />
-        {inputText.trim() && (
-          <Text fontSize="sm" color="purple.500" fontWeight="bold" ml={2} minW="80px">
-            消耗20积分
-          </Text>
-        )}
+      {/* 语气、长度、语言 下拉选择器 + 发送按钮 水平对齐 */}
+      <HStack spacing={3} mt={2} w="full" justify="space-between">
+        <HStack spacing={3}>
+          {/* 语气 */}
+          <Popover isOpen={toneDisclosure.isOpen} onClose={toneDisclosure.onClose}>
+            <PopoverTrigger>
+              <Button size="sm" variant="outline" onClick={toneDisclosure.onOpen}>
+                                    {t('write.tone')}：{selectedToneLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent w="120px">
+              <PopoverArrow />
+              <PopoverCloseButton />
+              <PopoverBody>
+                <VStack align="stretch" spacing={1}>
+                  {toneOptions.map(option => (
+                    <Button
+                      key={option.key}
+                      size="sm"
+                      variant={selectedTone === option.key ? "solid" : "ghost"}
+                      colorScheme="blue"
+                      onClick={() => handleToneSelect(option.key)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </VStack>
+              </PopoverBody>
+            </PopoverContent>
+          </Popover>
+          {/* 长度 */}
+          <Popover isOpen={lengthDisclosure.isOpen} onClose={lengthDisclosure.onClose}>
+            <PopoverTrigger>
+              <Button size="sm" variant="outline" onClick={lengthDisclosure.onOpen}>
+                                    {t('write.length')}：{selectedLengthLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent w="120px">
+              <PopoverArrow />
+              <PopoverCloseButton />
+              <PopoverBody>
+                <VStack align="stretch" spacing={1}>
+                  {lengthOptions.map(option => (
+                    <Button
+                      key={option.key}
+                      size="sm"
+                      variant={selectedLength === option.key ? "solid" : "ghost"}
+                      colorScheme="green"
+                      onClick={() => handleLengthSelect(option.key)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </VStack>
+              </PopoverBody>
+            </PopoverContent>
+          </Popover>
+          {/* 语言 */}
+          <Popover isOpen={languageDisclosure.isOpen} onClose={languageDisclosure.onClose}>
+            <PopoverTrigger>
+              <Button size="sm" variant="outline" onClick={languageDisclosure.onOpen}>
+                {t('write.language')}：{selectedLanguageLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent w="120px">
+              <PopoverArrow />
+              <PopoverCloseButton />
+              <PopoverBody>
+                <VStack align="stretch" spacing={1}>
+                  {languageOptions.map(option => (
+                    <Button
+                      key={option.key}
+                      size="sm"
+                      variant={selectedLanguage === option.key ? "solid" : "ghost"}
+                      colorScheme="purple"
+                      onClick={() => handleLanguageSelect(option.key)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </VStack>
+              </PopoverBody>
+            </PopoverContent>
+          </Popover>
+        </HStack>
+        <HStack spacing={2}>
+          <IconButton 
+            aria-label="发送" 
+            icon={isLoading ? <Spinner size="sm" /> : <FaPaperPlane />} 
+            colorScheme="purple" 
+            isRound 
+            size="md" 
+            onClick={handleWrite}
+            isDisabled={!inputText.trim() || isLoading}
+            isLoading={isLoading}
+          />
+          {inputText.trim() && (
+            isFreeUser ? (
+              <HStack 
+                spacing={1} 
+                bg="purple.50" 
+                _dark={{ bg: 'purple.900', borderColor: 'purple.700' }}
+                px={2} 
+                py={1} 
+                borderRadius="md"
+                border="1px solid"
+                borderColor="purple.200"
+              >
+                <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
+                  {t('credits.remainingFreeChats')}：
+                </Text>
+                <Text fontSize="xs" color="purple.700" _dark={{ color: 'purple.200' }} fontWeight="bold">
+                  {freeQuota - freeUsed}/{freeQuota}
+                </Text>
+              </HStack>
+            ) : (
+              <HStack 
+                spacing={1} 
+                bg="purple.50" 
+                _dark={{ bg: 'purple.900', borderColor: 'purple.700' }}
+                px={2} 
+                py={1} 
+                borderRadius="md"
+                border="1px solid"
+                borderColor="purple.200"
+              >
+                <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
+                  {t('credits.consume')}
+                </Text>
+                <Text fontSize="xs" color="purple.700" _dark={{ color: 'purple.200' }} fontWeight="bold">
+                  {creditCost}{t('credits.credits')}
+                </Text>
+              </HStack>
+            )
+          )}
+        </HStack>
       </HStack>
     </VStack>
   );

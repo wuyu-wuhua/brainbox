@@ -28,10 +28,21 @@ import { Message } from '../../types/chat';
 
 interface TravelViewProps {
   onClose: () => void;
-  onSendMessage: (message: Message, aiResponse?: Message) => void;
+  onSendMessage: (message: Message, aiResponse?: Message, aiPrompt?: string) => void;
+  isFreeUser?: boolean;
+  freeQuota?: number;
+  freeUsed?: number;
+  creditCost?: number;
 }
 
-const TravelView: React.FC<TravelViewProps> = ({ onClose, onSendMessage }) => {
+const TravelView: React.FC<TravelViewProps> = ({ 
+  onClose, 
+  onSendMessage,
+  isFreeUser = false,
+  freeQuota = 0,
+  freeUsed = 0,
+  creditCost = 5,
+}) => {
   const { t } = useLanguage();
   const toast = useToast();
   
@@ -184,7 +195,6 @@ ${details.trim() ? `其他要求：${details}` : ''}
           <Icon as={FiMap} />
           <Text fontWeight="bold">{t('travel.title')}</Text>
         </HStack>
-        <Text fontSize="sm" color="purple.400" fontWeight="bold">消耗20积分</Text>
         <IconButton 
           aria-label={t('common.close')} 
           icon={<FaTimes />} 
@@ -235,24 +245,115 @@ ${details.trim() ? `其他要求：${details}` : ''}
         onChange={(e) => setDetails(e.target.value)}
         isDisabled={isLoading}
       />
-      
-      {/* Footer */}
-      <HStack justify="flex-end" w="full" mt={2}>
-        <IconButton 
-          aria-label="发送" 
-          icon={isLoading ? <Spinner size="sm" /> : <FaPaperPlane />} 
-          colorScheme="pink" 
-          isRound 
-          size="md" 
-          onClick={handlePlan}
-          isDisabled={!destination.trim() || !days.trim() || isLoading}
-          isLoading={isLoading}
-        />
-        {(destination.trim() || days.trim()) && (
-          <Text fontSize="sm" color="purple.500" fontWeight="bold" ml={2} minW="80px">
-            消耗20积分
-          </Text>
-        )}
+      {/* 预算、节奏 下拉选择器 + 发送按钮 水平对齐 */}
+      <HStack spacing={3} mt={2} w="full" justify="space-between">
+        <HStack spacing={3}>
+          {/* 预算 */}
+          <Popover isOpen={budgetDisclosure.isOpen} onClose={budgetDisclosure.onClose}>
+            <PopoverTrigger>
+              <Button size="sm" variant="outline" onClick={budgetDisclosure.onOpen}>
+                {t('travel.budget')}：{selectedBudgetLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent w="120px">
+              <PopoverArrow />
+              <PopoverCloseButton />
+              <PopoverBody>
+                <VStack align="stretch" spacing={1}>
+                  {budgetOptions.map(option => (
+                    <Button
+                      key={option.key}
+                      size="sm"
+                      variant={selectedBudget === option.key ? "solid" : "ghost"}
+                      colorScheme="blue"
+                      onClick={() => handleBudgetSelect(option.key)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </VStack>
+              </PopoverBody>
+            </PopoverContent>
+          </Popover>
+          {/* 节奏 */}
+          <Popover isOpen={paceDisclosure.isOpen} onClose={paceDisclosure.onClose}>
+            <PopoverTrigger>
+              <Button size="sm" variant="outline" onClick={paceDisclosure.onOpen}>
+                                    {t('travel.pace')}：{selectedPaceLabel}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent w="120px">
+              <PopoverArrow />
+              <PopoverCloseButton />
+              <PopoverBody>
+                <VStack align="stretch" spacing={1}>
+                  {paceOptions.map(option => (
+                    <Button
+                      key={option.key}
+                      size="sm"
+                      variant={selectedPace === option.key ? "solid" : "ghost"}
+                      colorScheme="green"
+                      onClick={() => handlePaceSelect(option.key)}
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
+                </VStack>
+              </PopoverBody>
+            </PopoverContent>
+          </Popover>
+        </HStack>
+        <HStack spacing={2}>
+          <IconButton 
+            aria-label="发送" 
+            icon={isLoading ? <Spinner size="sm" /> : <FaPaperPlane />} 
+            colorScheme="pink" 
+            isRound 
+            size="md" 
+            onClick={handlePlan}
+            isDisabled={!destination.trim() || !days.trim() || isLoading}
+            isLoading={isLoading}
+          />
+          {(destination.trim() || days.trim() || selectedInterests.length > 0 || details.trim()) && (
+            isFreeUser ? (
+              <HStack 
+                spacing={1} 
+                bg="purple.50" 
+                _dark={{ bg: 'purple.900', borderColor: 'purple.700' }}
+                px={2} 
+                py={1} 
+                borderRadius="md"
+                border="1px solid"
+                borderColor="purple.200"
+              >
+                <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
+                  {t('credits.remainingFreeChats')}：
+                </Text>
+                <Text fontSize="xs" color="purple.700" _dark={{ color: 'purple.200' }} fontWeight="bold">
+                  {freeQuota - freeUsed}/{freeQuota}
+                </Text>
+              </HStack>
+            ) : (
+              <HStack 
+                spacing={1} 
+                bg="purple.50" 
+                _dark={{ bg: 'purple.900', borderColor: 'purple.700' }}
+                px={2} 
+                py={1} 
+                borderRadius="md"
+                border="1px solid"
+                borderColor="purple.200"
+              >
+                <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
+                  {t('credits.consume')}
+                </Text>
+                <Text fontSize="xs" color="purple.700" _dark={{ color: 'purple.200' }} fontWeight="bold">
+                  {creditCost}{t('credits.credits')}
+                </Text>
+              </HStack>
+            )
+          )}
+        </HStack>
       </HStack>
     </VStack>
   );

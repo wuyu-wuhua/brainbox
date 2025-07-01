@@ -76,7 +76,7 @@ export default function Read() {
   const toast = useToast();
   const { t } = useLanguage();
   const { user } = useAuth();
-  const { addActivity, addFavorite, updateStats, userStats, getUserQuota } = useUserActivity();
+  const { addActivity, addFavorite, updateStats, userStats, getUserQuota, checkFreeQuotaExceeded, getRemainingFreeQuota } = useUserActivity();
   const router = useRouter();
   const { isOpen: isLoginOpen, onOpen: onLoginOpen, onClose: onLoginClose } = useDisclosure();
 
@@ -475,6 +475,18 @@ export default function Read() {
 
   const handleStartAnalysis = () => {
     if (!checkLoginStatus()) return;
+    
+    // 检查免费额度
+    if (checkFreeQuotaExceeded('document')) {
+      toast({
+        title: '已达免费文档分析上限',
+        description: `您已用完 ${userStats.free_documents_limit} 次免费文档分析，请开通会员享受更多权益`,
+        status: 'warning',
+        duration: 4000,
+      });
+      return;
+    }
+    
     if (!documentContent || !documentContent.trim()) {
       toast({
         title: '请先上传文件或添加内容',
@@ -1093,9 +1105,15 @@ ${documentContent}
                       w="full"
                     >
                       {t('read.startAnalysis')}
-                      <Text fontSize="xs" ml={2} color="gray.300">
-                        (20积分)
-                      </Text>
+                      {isFreeUser ? (
+                        <Text fontSize="xs" ml={2} color="gray.300">
+                          ({t('credits.remainingFreeDocs')}：{freeQuota - freeUsed}/{freeQuota})
+                        </Text>
+                      ) : (
+                        <Text fontSize="xs" ml={2} color="gray.300">
+                          ({creditCost}积分)
+                        </Text>
+                      )}
                     </Button>
                     
                     {documentContent && (
@@ -1131,7 +1149,7 @@ ${documentContent}
                   >
                     {isFileProcessing ? (
                       <Flex justify="center" align="center" h="200px">
-                        <VStack spacing={4}>
+              <VStack spacing={4}>
                           <Spinner size="lg" color="purple.500" />
                           <Text>{t('read.processingDocument')}</Text>
                         </VStack>
@@ -1309,11 +1327,11 @@ ${documentContent}
                 />
                 {isFreeUser ? (
                   <Text fontSize="md" color="white" fontWeight="bold" px={3} py={1} borderRadius="md" bg="purple.500" boxShadow="sm">
-                    剩余免费PDF：{freeQuota - freeUsed}/{freeQuota}
+                    {t('credits.remainingFreePDF')}：{freeQuota - freeUsed}/{freeQuota}
                   </Text>
                 ) : (
                   <Text fontSize="xs" color="gray.300" fontWeight="bold" px={3} py={1} borderRadius="md" bg="purple.500" boxShadow="sm">
-                    消耗{creditCost}积分
+                    {t('credits.consume')}{creditCost}{t('credits.credits')}
                   </Text>
                 )}
                 <Button

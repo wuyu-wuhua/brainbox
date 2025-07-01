@@ -51,6 +51,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserActivity } from '../contexts/UserActivityContext';
 import { useRouter } from 'next/router';
+import { formatDateTime } from '../utils/dateUtils';
 
 const SpacePage = () => {
   const bgColor = useColorModeValue('white', 'gray.800');
@@ -285,13 +286,13 @@ const SpacePage = () => {
               <VStack align="end" spacing={4} minW="200px">
                 <Box textAlign="right">
                   <Text fontSize="sm" color="gray.600" _dark={{ color: 'gray.400' }} mb={1}>
-                    剩余积分
+                    {t('credits.remainingCredits')}
                   </Text>
                   <Text fontSize="2xl" fontWeight="bold" color="purple.500">
                     {userStats?.credits || 0}
                   </Text>
                   <Text fontSize="sm" color="gray.500">
-                    积分
+                    {t('credits.credits')}
                   </Text>
                 </Box>
                 <Button
@@ -308,7 +309,7 @@ const SpacePage = () => {
                   }}
                   transition="all 0.2s"
                 >
-                  充值积分
+                  {t('credits.recharge')}
                 </Button>
               </VStack>
             </Flex>
@@ -363,7 +364,7 @@ const SpacePage = () => {
                       <Icon as={getActivityIcon(activity.type)} color={getActivityColor(activity.type)} mb={2} />
                       <Text fontWeight="bold">{getActivityTitle(activity.type)}</Text>
                       <Text color="gray.500" fontSize="sm">
-                        {activity.timestamp}
+                        {formatDateTime(activity.timestamp)}
                       </Text>
                     </Box>
                   ))}
@@ -387,7 +388,7 @@ const SpacePage = () => {
               <VStack align="stretch" spacing={2}>
                 <Heading size="md">{t('space.myFavorites')}</Heading>
                 <Text fontSize="sm" color="gray.500">
-                  💾 带有"永久保存"标签的视频已保存到服务器，不会过期。⚠️ 外链视频可能会在一段时间后失效。
+                  {t('space.videoStorageNote')}
                 </Text>
               </VStack>
               
@@ -403,7 +404,7 @@ const SpacePage = () => {
                           leftIcon={<MdSelectAll />}
                           onClick={handleSelectAll}
                         >
-                          {selectedFavorites.length === favorites.length ? '取消全选' : '全选'}
+                          {selectedFavorites.length === favorites.length ? t('space.unselectAll') : t('space.selectAll')}
                         </Button>
                         <Button
                           size="sm"
@@ -433,7 +434,7 @@ const SpacePage = () => {
                           leftIcon={<FiCheck />}
                           onClick={handleToggleSelectionMode}
                         >
-                          多选
+                          {t('space.multiSelect')}
                         </Button>
                         <Button
                           size="sm"
@@ -442,7 +443,7 @@ const SpacePage = () => {
                           leftIcon={<MdClear />}
                           onClick={onBatchDeleteOpen}
                         >
-                          清空所有
+                          {t('space.clearAll')}
                         </Button>
                       </>
                     )}
@@ -484,11 +485,11 @@ const SpacePage = () => {
                         <Text fontWeight="bold">
                           {favorite.type === 'conversation' ? t('space.favoriteConversation') : 
                            favorite.type === 'image' ? (
-                             favorite.title.includes('图生图') ? '收藏的图生图' : 
-                             favorite.title.includes('图像编辑') ? '收藏的图像编辑' : '收藏的文生图'
+                             favorite.title.includes('图生图') ? t('space.favoriteImageToImage') : 
+                             favorite.title.includes('图像编辑') ? t('space.favoriteImageEdit') : t('space.favoriteTextToImage')
                            ) : 
                            favorite.type === 'video' ? (
-                             favorite.title.includes('图生视频') ? '收藏的图生视频' : '收藏的文生视频'
+                             favorite.title.includes('图生视频') ? t('space.favoriteImageToVideo') : t('space.favoriteTextToVideo')
                            ) : t('space.favoriteDocument')}
                         </Text>
                         {!isSelectionMode && (
@@ -523,7 +524,7 @@ const SpacePage = () => {
                             {isImg2Img && referenceImage && (
                               <Box>
                                 <Text fontSize="xs" color="gray.600" mb={1}>
-                                  {favorite.title.includes('图像编辑') ? '原始图片:' : '参考图片:'}
+                                  {favorite.title.includes('图像编辑') ? t('space.originalImage') : t('space.referenceImage')}
                                 </Text>
                                 <Image
                                   src={referenceImage}
@@ -540,7 +541,7 @@ const SpacePage = () => {
                             {imageUrl ? (
                               <Box>
                                 <Text fontSize="xs" color="gray.600" mb={1}>
-                                  {favorite.title.includes('图像编辑') ? '编辑后的图片:' : '生成的图片:'}
+                                  {favorite.title.includes('图像编辑') ? t('space.editedImage') : t('space.generatedImage')}
                                 </Text>
                                 <Image
                                   src={imageUrl}
@@ -565,7 +566,7 @@ const SpacePage = () => {
                               </Box>
                             ) : (
                               <Box>
-                                <Text fontSize="xs" color="gray.600" mb={1}>生成的图片:</Text>
+                                <Text fontSize="xs" color="gray.600" mb={1}>{t('space.generatedImage')}</Text>
                                 <Box
                                   h="120px"
                                   bg="gray.100"
@@ -574,7 +575,7 @@ const SpacePage = () => {
                                   alignItems="center"
                                   justifyContent="center"
                                 >
-                                  <Text color="gray.500" fontSize="sm">图片链接已失效</Text>
+                                  <Text color="gray.500" fontSize="sm">{t('space.imageLinkExpired')}</Text>
                                 </Box>
                               </Box>
                             )}
@@ -595,7 +596,7 @@ const SpacePage = () => {
                             {/* 如果是图生视频，显示参考图片 */}
                             {isImg2Video && referenceImage && (
                               <Box>
-                                <Text fontSize="xs" color="gray.600" mb={1}>参考图片:</Text>
+                                <Text fontSize="xs" color="gray.600" mb={1}>{t('space.referenceImage')}</Text>
                                 <Image
                                   src={referenceImage}
                                   alt="参考图片"
@@ -611,12 +612,12 @@ const SpacePage = () => {
                             {videoUrl ? (
                               <Box>
                                 <HStack justify="space-between" align="center" mb={1}>
-                                  <Text fontSize="xs" color="gray.600">生成的视频:</Text>
+                                  <Text fontSize="xs" color="gray.600">{t('space.generatedVideo')}</Text>
                                   {videoUrl.startsWith('/uploads/') && (
-                                    <Badge colorScheme="green" size="sm">永久保存</Badge>
+                                    <Badge colorScheme="green" size="sm">{t('space.permanentlySaved')}</Badge>
                                   )}
                                   {videoUrl.startsWith('http') && !videoUrl.includes(window?.location?.hostname) && (
-                                    <Badge colorScheme="orange" size="sm">外链可能过期</Badge>
+                                    <Badge colorScheme="orange" size="sm">{t('space.externalLinkExpire')}</Badge>
                                   )}
                                 </HStack>
                                 <video
@@ -630,9 +631,9 @@ const SpacePage = () => {
                                   }}
                                 />
                               </Box>
-                            ) : (
+                                                          ) : (
                               <Box>
-                                <Text fontSize="xs" color="gray.600" mb={1}>生成的视频:</Text>
+                                <Text fontSize="xs" color="gray.600" mb={1}>{t('space.generatedVideo')}</Text>
                                 <Box
                                   h="120px"
                                   bg="purple.100"
@@ -659,7 +660,7 @@ const SpacePage = () => {
                         }
                       </Text>
                       <Text fontSize="xs" color="gray.400" mt={2}>
-                        {favorite.timestamp}
+                        {formatDateTime(favorite.timestamp)}
                       </Text>
                     </Box>
                   ))}
@@ -701,7 +702,7 @@ const SpacePage = () => {
                         selectedFavorite?.type === 'video' ? '视频生成' : '文档阅读'}
                 </Text>
                 <Text fontSize="sm" color="gray.500" mb={4}>
-                  收藏时间: {selectedFavorite?.timestamp}
+                  收藏时间: {selectedFavorite?.timestamp ? formatDateTime(selectedFavorite.timestamp) : '未知时间'}
                 </Text>
               </Box>
               
@@ -720,7 +721,7 @@ const SpacePage = () => {
                       {isImg2Img && referenceImage && (
                         <Box mb={4}>
                           <Text fontSize="md" fontWeight="bold" mb={2}>
-                            {selectedFavorite.title.includes('图像编辑') ? '原始图片:' : '参考图片:'}
+                            {selectedFavorite.title.includes('图像编辑') ? t('space.originalImage') : t('space.referenceImage')}
                           </Text>
                           <Image
                             src={referenceImage}
@@ -737,7 +738,7 @@ const SpacePage = () => {
                       {imageUrl ? (
                         <Box mb={4}>
                           <Text fontSize="md" fontWeight="bold" mb={2}>
-                            {selectedFavorite.title.includes('图像编辑') ? '编辑后的图片:' : '生成的图片:'}
+                            {selectedFavorite.title.includes('图像编辑') ? t('space.editedImage') : t('space.generatedImage')}
                           </Text>
                           <Image
                             src={imageUrl}
@@ -755,14 +756,14 @@ const SpacePage = () => {
                                 alignItems="center"
                                 justifyContent="center"
                               >
-                                <Text color="gray.500">图片加载失败</Text>
+                                <Text color="gray.500">{t('space.imageLoadFailed')}</Text>
                               </Box>
                             }
                           />
                         </Box>
                       ) : (
                         <Box mb={4}>
-                          <Text fontSize="md" fontWeight="bold" mb={2}>生成的图片:</Text>
+                          <Text fontSize="md" fontWeight="bold" mb={2}>{t('space.generatedImage')}</Text>
                           <Box
                             h="300px"
                             bg="gray.100"
@@ -771,7 +772,7 @@ const SpacePage = () => {
                             alignItems="center"
                             justifyContent="center"
                           >
-                            <Text color="gray.500">图片链接已失效</Text>
+                            <Text color="gray.500">{t('space.imageLinkExpired')}</Text>
                           </Box>
                         </Box>
                       )}
@@ -794,7 +795,7 @@ const SpacePage = () => {
                       {/* 如果是图生视频，显示参考图片 */}
                       {isImg2Video && referenceImage && (
                         <Box mb={4}>
-                          <Text fontSize="md" fontWeight="bold" mb={2}>参考图片:</Text>
+                          <Text fontSize="md" fontWeight="bold" mb={2}>{t('space.referenceImage')}</Text>
                           <Image
                             src={referenceImage}
                             alt="参考图片"
@@ -810,12 +811,12 @@ const SpacePage = () => {
                       {videoUrl ? (
                         <Box mb={4}>
                           <HStack justify="space-between" align="center" mb={2}>
-                            <Text fontSize="md" fontWeight="bold">生成的视频:</Text>
+                            <Text fontSize="md" fontWeight="bold">{t('space.generatedVideo')}</Text>
                             {videoUrl.startsWith('/uploads/') && (
-                              <Badge colorScheme="green">永久保存</Badge>
+                              <Badge colorScheme="green">{t('space.permanentlySaved')}</Badge>
                             )}
                             {videoUrl.startsWith('http') && !videoUrl.includes(window?.location?.hostname) && (
-                              <Badge colorScheme="orange">外链可能过期</Badge>
+                              <Badge colorScheme="orange">{t('space.externalLinkExpire')}</Badge>
                             )}
                           </HStack>
                           <video
@@ -830,7 +831,7 @@ const SpacePage = () => {
                         </Box>
                       ) : (
                         <Box mb={4}>
-                          <Text fontSize="md" fontWeight="bold" mb={2}>生成的视频:</Text>
+                          <Text fontSize="md" fontWeight="bold" mb={2}>{t('space.generatedVideo')}</Text>
                           <Box
                             h="300px"
                             bg="purple.100"
@@ -842,7 +843,7 @@ const SpacePage = () => {
                           >
                             <VStack>
                               <Icon as={FiVideo} size="60px" color="purple.500" />
-                              <Text color="gray.500">视频暂时无法预览</Text>
+                              <Text color="gray.500">{t('space.videoPreviewUnavailable')}</Text>
                             </VStack>
                           </Box>
                         </Box>

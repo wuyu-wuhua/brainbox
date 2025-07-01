@@ -186,7 +186,7 @@ export default function Video() {
   const router = useRouter();
   const toast = useToast();
   const { t } = useLanguage();
-  const { addActivity, addFavorite, removeFavorite, favorites, userStats, getUserQuota } = useUserActivity();
+  const { addActivity, addFavorite, removeFavorite, favorites, userStats, getUserQuota, checkFreeQuotaExceeded, getRemainingFreeQuota } = useUserActivity();
   const { user } = useAuth();
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -244,52 +244,41 @@ export default function Video() {
 
   // 从URL参数加载历史记录
   useEffect(() => {
-    const { loadHistory } = router.query;
-    
-    const loadHistoryData = async () => {
-      if (loadHistory && typeof loadHistory === 'string') {
-        const histories = await getHistories();
-        const targetHistory = histories.find(h => h.id === loadHistory);
-        if (targetHistory && targetHistory.type === 'video') {
-          console.log('恢复视频历史记录:', targetHistory);
-          
-          // 检查是否是Google Veo 3的历史记录
-          if (targetHistory.model.includes('Google Veo 3')) {
-            console.log('检测到Google Veo 3历史记录，切换到gen3模型');
-            setModelType('gen3');
-            // Google Veo 3的历史记录恢复由Gen3VideoPage组件处理
-          } else {
-            // 常规视频历史记录恢复
-            setModelType('regular');
-          
-          // 恢复提示词
-          if (targetHistory.messages.length > 0) {
-            setPrompt(targetHistory.messages[0].content);
-          }
-          
-          // 恢复参数
-          if (targetHistory.messages.length > 1 && targetHistory.messages[1].metadata) {
-            const metadata = targetHistory.messages[1].metadata as any;
-            if (metadata.videoStyle) setVideoStyle(metadata.videoStyle);
-            if (metadata.aspectRatio) setAspectRatio(metadata.aspectRatio);
-            if (metadata.duration) setDuration(metadata.duration);
-            if (metadata.mode) setMode(metadata.mode);
-          }
-          
-          // 恢复生成的视频
-          if (targetHistory.messages.length > 1) {
-            const aiResponse = targetHistory.messages[1].content;
-            const match = aiResponse.match(/生成的视频：(https?:\/\/[^\s]+)/);
-            if (match) {
-              setGeneratedVideo(match[1]);
-              }
-            }
-          }
+    const { loadHistory, prompt: urlPrompt } = router.query;
+    let targetHistory = null;
+    if (typeof window !== 'undefined') {
+      const pending = sessionStorage.getItem('pendingHistory');
+      if (pending) {
+        targetHistory = JSON.parse(pending);
+        sessionStorage.removeItem('pendingHistory');
+      }
+    }
+    if (!targetHistory && loadHistory && typeof loadHistory === 'string') {
+      const histories = getHistories();
+      targetHistory = histories.find(h => h.id === loadHistory);
+    }
+    if (targetHistory && targetHistory.type === 'video') {
+      // 还原prompt
+      if (targetHistory.messages.length > 0) {
+        setPrompt(targetHistory.messages[0].content);
+      }
+      // 还原生成的视频（如有）
+      if (targetHistory.messages.length > 1) {
+        const aiResponse = targetHistory.messages[1].content;
+        const match = aiResponse.match(/生成的视频：(https?:\/\/[^\s]+)/);
+        if (match) {
+          const originalUrl = match[1];
+          // 无论什么外链都用代理
+          const proxyUrl = `/api/video-proxy?url=${encodeURIComponent(originalUrl)}`;
+          setGeneratedVideo(proxyUrl);
+        } else {
+          setGeneratedVideo(null); // 没有视频
         }
       }
-    };
-    
-    loadHistoryData();
+      // 还原其他参数（如风格、时长等）可根据实际历史结构补充
+    } else if (urlPrompt && typeof urlPrompt === 'string') {
+      setPrompt(urlPrompt);
+    }
   }, [router.query]);
 
   // 检查当前视频是否已收藏
@@ -439,6 +428,17 @@ export default function Video() {
         description: t('video.pleaseLoginDesc'),
         status: 'warning',
         duration: 3000,
+      });
+      return;
+    }
+
+    // 检查免费额度
+    if (checkFreeQuotaExceeded('video')) {
+      toast({
+        title: '已达免费视频上限',
+        description: `您已用完 ${userStats.free_videos_limit} 次免费视频生成，请开通会员享受更多权益`,
+        status: 'warning',
+        duration: 4000,
       });
       return;
     }
@@ -1197,9 +1197,9 @@ export default function Video() {
     ];
 
     const speedOptions = [
-      { value: 'slow', label: '慢速', description: '缓慢动作' },
-      { value: 'normal', label: '正常', description: '自然速度' },
-      { value: 'fast', label: '快速', description: '加速动作' },
+      { value: 'slow', label: t('video.speeds.slow'), description: '缓慢动作' },
+      { value: 'normal', label: t('video.speeds.normal'), description: '自然速度' },
+      { value: 'fast', label: t('video.speeds.fast'), description: '加速动作' },
     ];
 
     const lightingOptions = [
@@ -1723,20 +1723,20 @@ export default function Video() {
             <HStack spacing={3} mb={2}>
               <Icon as={RiVideoFill} boxSize={6} />
               <Text fontSize="xl" fontWeight="bold">
-                Google Veo 3视频
+                {t('video.googleVeo3Title')}
               </Text>
               <Badge colorScheme="whiteAlpha" variant="solid" fontSize="xs">
-                最新
+                {t('common.latest')}
               </Badge>
             </HStack>
             <Text fontSize="md" opacity={0.9}>
-              阿里云DashScope AI视频生成技术，支持高质量视频创作
+              {t('video.dashscopeDesc')}
             </Text>
             <HStack spacing={4} mt={3}>
-              <Text fontSize="sm" opacity={0.8}>✨ 5秒高清视频</Text>
-              <Text fontSize="sm" opacity={0.8}>🎬 电影级画质</Text>
-              <Text fontSize="sm" opacity={0.8}>🎯 精准控制</Text>
-              <Text fontSize="sm" opacity={0.8}>💬 支持文生视频</Text>
+              <Text fontSize="sm" opacity={0.8}>{t('video.feature5SecHD')}</Text>
+              <Text fontSize="sm" opacity={0.8}>{t('video.featureCinemaQuality')}</Text>
+              <Text fontSize="sm" opacity={0.8}>{t('video.featurePreciseControl')}</Text>
+              <Text fontSize="sm" opacity={0.8}>{t('video.featureText2Video')}</Text>
             </HStack>
           </Box>
           {/* 装饰性背景 */}
@@ -1774,9 +1774,9 @@ export default function Video() {
                 <HStack>
                   <Icon as={FiMessageSquare} color="white" />
                   <Heading size="md" color="white">
-                    Google Veo 3 AI对话
+                    {t('video.googleVeo3Chat')}
                   </Heading>
-                  <Text fontSize="sm" color="purple.200" fontWeight="bold" ml={3}>消耗1250积分</Text>
+                  <Text fontSize="sm" color="purple.200" fontWeight="bold" ml={3}>{t('credits.consume')}1250{t('credits.credits')}</Text>
                 </HStack>
                 {gen3Messages.length > 0 && (
                   <Button
@@ -1809,16 +1809,6 @@ export default function Video() {
                 data-chat-container
               >
                   <VStack spacing={4} align="stretch">
-                    {/* 调试信息 - 仅在开发模式显示 */}
-                    {process.env.NODE_ENV === 'development' && (
-                      <Box bg="yellow.100" p={2} borderRadius="md" fontSize="xs">
-                        <Text>🐛 调试信息: 消息数量: {gen3Messages.length}</Text>
-                        <Text>📊 强制更新计数: {forceUpdateCount}</Text>
-                        <Text>🎯 当前模式: {modelType}</Text>
-                        <Text>⚡ 是否生成中: {gen3IsGenerating ? '是' : '否'}</Text>
-                      </Box>
-                    )}
-                    
                     {/* AI欢迎消息 */}
                     {gen3Messages.length === 0 && (
                       <HStack align="start" spacing={3}>
@@ -1856,10 +1846,10 @@ export default function Video() {
                           }}
                         >
                           <Text fontSize="sm" fontWeight="medium" mb={2}>
-                            你好！我是 Google Veo 3 AI助手 🎬
+                            {t('video.assistantGreeting')} 🎬
                 </Text>
                           <Text fontSize="sm" color="gray.600" _dark={{ color: 'gray.300' }} mb={6}>
-                            请描述您想要创建的视频场景，我会为您生成高质量的5秒视频。
+                            {t('video.assistantDesc')}
                     </Text>
                           <Box 
                             mt={3} 
@@ -1870,7 +1860,7 @@ export default function Video() {
                             borderColor={useColorModeValue('purple.200', 'purple.600')}
                           >
                             <Text fontSize="xs" color="purple.600" _dark={{ color: 'purple.300' }} fontWeight="medium">
-                              💡 例如：一只小猫在花园里追蝴蝶，阳光透过树叶洒下斑驳的光影
+                              💡 {t('video.exampleText')}
                             </Text>
                   </Box>
                     </Box>
@@ -2140,7 +2130,7 @@ export default function Video() {
                     {/* 视频尺寸快速选择 */}
                     <Box w="full">
                       <Text fontSize="sm" color="gray.700" _dark={{ color: 'gray.300' }} mb={3} fontWeight="medium">
-                        🎬 视频尺寸
+                        {t('video.videoSize')}
                       </Text>
                       <HStack spacing={3} justify="center">
                         {gen3AspectRatios.map(ratio => (
@@ -2169,7 +2159,7 @@ export default function Video() {
                     {/* 输入框和发送按钮 */}
                     <HStack spacing={3} w="full" align="center">
                       <Input
-                        placeholder="✨ 描述您想要的视频场景..."
+                        placeholder={t('video.promptPlaceholder')}
                         value={gen3Prompt}
                         onChange={(e) => setGen3Prompt(e.target.value)}
                         onKeyPress={(e) => {
@@ -2215,7 +2205,7 @@ export default function Video() {
                       />
                       {gen3Prompt.trim() && (
                         <Text fontSize="sm" color="purple.500" fontWeight="bold" ml={2} minW="90px">
-                          消耗1250积分
+                          {t('credits.consume')}1250{t('credits.credits')}
                         </Text>
                       )}
                     </HStack>
@@ -2228,7 +2218,7 @@ export default function Video() {
                       <HStack spacing={2} mb={2}>
                         <Icon as={FiImage} color="purple.400" />
                         <Text fontSize="md" fontWeight="bold" color="purple.700" _dark={{ color: 'purple.200' }}>
-                          风格
+                          {t('video.style')}
                         </Text>
                       </HStack>
                       <Wrap spacing={3} shouldWrapChildren>
@@ -2253,7 +2243,7 @@ export default function Video() {
                             }}
                             transition="all 0.2s"
                           >
-                            {style === 'realistic' ? '写实' : style === 'cartoon' ? '卡通' : style === 'fantasy' ? '奇幻' : style === 'movie' ? '电影' : style === 'cyberpunk' ? '赛博朋克' : style}
+                            {t(`video.styles.${style}`)}
                           </Button>
                         ))}
                       </Wrap>
@@ -2264,7 +2254,7 @@ export default function Video() {
                       <HStack spacing={2} mb={2}>
                         <Icon as={FiZap} color="purple.400" />
                         <Text fontSize="md" fontWeight="bold" color="purple.700" _dark={{ color: 'purple.200' }}>
-                          速度
+                          {t('video.speed')}
                         </Text>
                       </HStack>
                       <Wrap spacing={3} shouldWrapChildren>
@@ -2338,7 +2328,7 @@ export default function Video() {
                       预计等待时间：2-3分钟
                     </Text>
                     <Text fontSize="xs" color="gray.600" _dark={{ color: 'gray.400' }}>
-                      Google Veo 3 模型正在进行高质量视频渲染，请耐心等待
+                      {t('video.veo3Rendering')}
                     </Text>
                   </VStack>
                 </Alert>
@@ -2402,7 +2392,7 @@ export default function Video() {
                     _dark: { bg: modelType === 'regular' ? 'purple.600' : 'gray.600' }
                   }}
                 >
-                  常规模型
+                  {t('video.regularModel')}
                 </Button>
                 <Button
                   size="md"
@@ -2415,7 +2405,7 @@ export default function Video() {
                     _dark: { bg: modelType === 'gen3' ? 'purple.600' : 'gray.600' }
                   }}
                 >
-                  Google Veo 3 模型
+                  {t('video.googleVeo3Model')}
                 </Button>
               </HStack>
             </VStack>
@@ -2489,12 +2479,6 @@ export default function Video() {
                                   </option>
                                 ))}
                               </Select>
-                              <Alert status="info" size="sm" mt={2}>
-                                <AlertIcon />
-                                <Text fontSize="xs">
-                                  视频尺寸已验证有效：16:9 → 1280×720，9:16 → 720×1280，1:1 → 960×960，4:3 → 1088×832，3:4 → 832×1088
-                                </Text>
-                              </Alert>
                             </Box>
                             
 
@@ -2513,9 +2497,9 @@ export default function Video() {
                         loadingText={t('video.generating')}
                         disabled={!prompt.trim() || isGenerating}
                       >
-                        生成视频
+                        {t('video.generateVideo')}
                         <Text as="span" fontSize="sm" fontWeight="bold" ml={2} px={3} py={0.5} borderRadius="full" bgGradient="linear(to-r, purple.400, purple.600)" color="white" display="inline-block">
-                          {isFreeUser ? `剩余免费视频 ${freeQuota - freeUsed}/${freeQuota}` : `消耗${creditCost}积分`}
+                          {isFreeUser ? `${t('credits.remainingFreeVideos')} ${freeQuota - freeUsed}/${freeQuota}` : `${t('credits.consume')}${creditCost}${t('credits.credits')}`}
                         </Text>
                       </Button>
                       
@@ -2622,7 +2606,7 @@ export default function Video() {
                                         {t('video.previewDesc')}
                                       </Text>
                                       <Text color="purple.500" textAlign="center" fontSize="xs" fontWeight="medium" mt={2}>
-                                        💡 视频时长固定为5秒
+                                        {t('video.durationNote')}
                                       </Text>
                                     </VStack>
                                   </VStack>
@@ -2666,7 +2650,7 @@ export default function Video() {
                                   objectFit="cover"
                                 />
                                 <IconButton
-                                  aria-label="删除图片"
+                                                                      aria-label={t('video.deleteImage')}
                                   icon={<FiX />}
                                   size="sm"
                                   position="absolute"
@@ -2838,9 +2822,9 @@ export default function Video() {
                         loadingText={t('video.generating')}
                         disabled={!prompt.trim() || !referenceImage || isGenerating}
                       >
-                        生成视频
+                        {t('video.generateVideo')}
                         <Text as="span" fontSize="sm" fontWeight="bold" ml={2} px={3} py={0.5} borderRadius="full" bgGradient="linear(to-r, purple.400, purple.600)" color="white" display="inline-block">
-                          {isFreeUser ? `剩余免费视频 ${freeQuota - freeUsed}/${freeQuota}` : `消耗${creditCost}积分`}
+                          {isFreeUser ? `${t('credits.remainingFreeVideos')} ${freeQuota - freeUsed}/${freeQuota}` : `${t('credits.consume')}${creditCost}${t('credits.credits')}`}
                         </Text>
                       </Button>
                       
@@ -2947,7 +2931,7 @@ export default function Video() {
                                         {t('video.previewDesc')}
                                       </Text>
                                       <Text color="purple.500" textAlign="center" fontSize="xs" fontWeight="medium" mt={2}>
-                                        💡 视频时长固定为5秒
+                                        {t('video.durationNote')}
                                       </Text>
                                     </VStack>
                                   </VStack>
