@@ -1,0 +1,114 @@
+{
+  "model": {
+    "llama31405b": {
+      "desc": "Llama 3.1 405B is Meta's latest large language model with 405 billion parameters, showing exceptional performance across various tasks."
+    },
+    "deepseekr10528": {
+      "desc": "DeepSeek R1 0528 is a general-purpose AI assistant capable of handling various tasks."
+    },
+    "deepseekr1lite": {
+      "desc": "DeepSeek R1 Lite is a lightweight version offering faster response times."
+    },
+    "deepseekv3": {
+      "desc": "DeepSeek V3 is the latest generation model with enhanced understanding and generation capabilities."
+    },
+    "gpt35turbo": {
+      "desc": "GPT-3.5 Turbo is a fast and efficient AI assistant suitable for daily conversations and tasks."
+    },
+    "gpt4": {
+      "desc": "GPT-4 has powerful understanding and reasoning capabilities for complex tasks."
+    },
+    "gpt4turbo": {
+      "desc": "GPT-4 Turbo is an upgraded version of GPT-4 with faster response times."
+    },
+    "gpt4o": {
+      "desc": "GPT-4o is an optimized version performing better on specific tasks."
+    },
+    "gpt45turbo": {
+      "desc": "GPT-4.5 Turbo is the latest advanced version with enhanced capabilities and speed."
+    },
+    "claude3opus": {
+      "desc": "Claude 3 Opus is Anthropic's flagship model with exceptional understanding and creation abilities."
+    },
+    "claude3sonnet": {
+      "desc": "Claude 3 Sonnet strikes a great balance between performance and speed."
+    },
+    "claude3haiku": {
+      "desc": "Claude 3 Haiku is a lightweight model with quick responses."
+    },
+    "claude35sonnet": {
+      "desc": "Claude 3.5 Sonnet is an upgraded version with enhanced understanding capabilities."
+    },
+    "claude35opus": {
+      "desc": "Claude 3.5 Opus is a recommended high-performance model for complex tasks."
+    },
+    "claude37sonnet": {
+      "desc": "Claude 3.7 Sonnet is the latest advanced version with enhanced analytical capabilities."
+    },
+    "claude37opus": {
+      "desc": "Claude 3.7 Opus is an ultra-performance version for handling the most complex tasks."
+    },
+    "claude4": {
+      "desc": "Claude 4 is the next-generation model with breakthrough understanding and generation capabilities."
+    },
+    "gemini15pro": {
+      "desc": "Gemini 1.5 Pro is Google's next-gen AI model with excellent multimodal capabilities."
+    },
+    "gemini15flash": {
+      "desc": "Gemini 1.5 Flash is a fast-response version suitable for real-time interaction."
+    },
+    "gemini10ultra": {
+      "desc": "Gemini 1.0 Ultra has powerful understanding and reasoning capabilities."
+    },
+    "gemini25flash": {
+      "desc": "Gemini 2.5 Flash is the latest fast version with enhanced processing capabilities."
+    },
+    "gemini25pro": {
+      "desc": "Gemini 2.5 Pro is an advanced version with enhanced multimodal understanding."
+    },
+    "llama3170b": {
+      "desc": "Llama 3.1 70B is Meta's large language model with excellent comprehension abilities."
+    },
+    "llama318b": {
+      "desc": "Llama 3.1 8B is a lightweight version suitable for quick responses."
+    },
+    "llama370binstruct": {
+      "desc": "Llama 3 70B Instruct is instruction-tuned version better suited for conversations."
+    },
+    "codellama70b": {
+      "desc": "Code Llama 70B is specialized for programming with powerful code understanding and generation capabilities."
+    },
+    "badges": {
+      "fast": "Fast",
+      "powerful": "Powerful",
+      "balanced": "Balanced",
+      "general": "General",
+      "programming": "Programming",
+      "latest": "Latest",
+      "recommended": "Recommended",
+      "newVersion": "New Version",
+      "optimized": "Optimized",
+      "ultra": "Ultra"
+    }
+  },
+  "chat": {
+    "video": "Text to Video",
+    "videoPrompt": "Video Prompt",
+    "videoPromptRequired": "Please enter a prompt",
+    "videoPlaceholder": "Enter video prompt, e.g.: A cat running under moonlight",
+    "videoSize": "Video Size",
+    "videoGenerate": "Generate Video",
+    "videoGenerating": "Generating...",
+    "videoSuccess": "Video generated successfully",
+    "videoFailed": "Video generation failed",
+    "videoGenerationFailed": "Generation failed",
+    "videoCheckFailed": "Failed to check status",
+    "videoProgress": "Generation Progress",
+    "videoProcessing": "Processing video...",
+    "videoResult": "Result",
+    "tryAgainLater": "Please try again later"
+  },
+  "common": {
+    "close": "Close"
+  }
+} 

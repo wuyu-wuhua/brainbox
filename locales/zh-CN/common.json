@@ -1,0 +1,114 @@
+{
+  "model": {
+    "llama31405b": {
+      "desc": "Llama 3.1 405B是Meta最新推出的超大规模语言模型，拥有4050亿参数，在各项任务中展现出卓越的性能。"
+    },
+    "deepseekr10528": {
+      "desc": "DeepSeek R1 0528是一款通用型AI助手，擅长多种任务处理。"
+    },
+    "deepseekr1lite": {
+      "desc": "DeepSeek R1 Lite是轻量级版本，响应速度更快。"
+    },
+    "deepseekv3": {
+      "desc": "DeepSeek V3是最新一代模型，具有更强的理解和生成能力。"
+    },
+    "gpt35turbo": {
+      "desc": "GPT-3.5 Turbo是一款快速高效的AI助手，适合日常对话和任务。"
+    },
+    "gpt4": {
+      "desc": "GPT-4具有强大的理解和推理能力，可以处理复杂任务。"
+    },
+    "gpt4turbo": {
+      "desc": "GPT-4 Turbo是GPT-4的升级版本，具有更快的响应速度。"
+    },
+    "gpt4o": {
+      "desc": "GPT-4o是经过优化的版本，在特定任务上表现更好。"
+    },
+    "gpt45turbo": {
+      "desc": "GPT-4.5 Turbo是最新的高级版本，具有更强的能力和更快的速度。"
+    },
+    "claude3opus": {
+      "desc": "Claude 3 Opus是Anthropic的旗舰模型，具有卓越的理解和创作能力。"
+    },
+    "claude3sonnet": {
+      "desc": "Claude 3 Sonnet在性能和速度之间取得了很好的平衡。"
+    },
+    "claude3haiku": {
+      "desc": "Claude 3 Haiku是一款轻量级模型，响应迅速。"
+    },
+    "claude35sonnet": {
+      "desc": "Claude 3.5 Sonnet是升级版本，具有更强的理解能力。"
+    },
+    "claude35opus": {
+      "desc": "Claude 3.5 Opus是推荐的高性能模型，适合复杂任务。"
+    },
+    "claude37sonnet": {
+      "desc": "Claude 3.7 Sonnet是最新的高级版本，具有更强的分析能力。"
+    },
+    "claude37opus": {
+      "desc": "Claude 3.7 Opus是超强性能版本，适合处理最复杂的任务。"
+    },
+    "claude4": {
+      "desc": "Claude 4是最新一代模型，具有突破性的理解和生成能力。"
+    },
+    "gemini15pro": {
+      "desc": "Gemini 1.5 Pro是Google的新一代AI模型，具有出色的多模态能力。"
+    },
+    "gemini15flash": {
+      "desc": "Gemini 1.5 Flash是快速响应版本，适合实时交互。"
+    },
+    "gemini10ultra": {
+      "desc": "Gemini 1.0 Ultra具有强大的理解和推理能力。"
+    },
+    "gemini25flash": {
+      "desc": "Gemini 2.5 Flash是最新的快速版本，具有更强的处理能力。"
+    },
+    "gemini25pro": {
+      "desc": "Gemini 2.5 Pro是高级版本，具有更强的多模态理解能力。"
+    },
+    "llama3170b": {
+      "desc": "Llama 3.1 70B是Meta的大规模语言模型，具有优秀的理解能力。"
+    },
+    "llama318b": {
+      "desc": "Llama 3.1 8B是轻量级版本，适合快速响应。"
+    },
+    "llama370binstruct": {
+      "desc": "Llama 3 70B Instruct是经过指令微调的版本，更适合对话。"
+    },
+    "codellama70b": {
+      "desc": "Code Llama 70B是专门用于编程的版本，具有强大的代码理解和生成能力。"
+    },
+    "badges": {
+      "fast": "快速",
+      "powerful": "强大",
+      "balanced": "均衡",
+      "general": "通用",
+      "programming": "编程",
+      "latest": "最新",
+      "recommended": "推荐",
+      "newVersion": "新版本",
+      "optimized": "优化",
+      "ultra": "超强"
+    }
+  },
+  "chat": {
+    "video": "文生视频",
+    "videoPrompt": "视频提示词",
+    "videoPromptRequired": "请输入提示词",
+    "videoPlaceholder": "请输入视频提示词，例如：一只小猫在月光下奔跑",
+    "videoSize": "视频尺寸",
+    "videoGenerate": "生成视频",
+    "videoGenerating": "生成中...",
+    "videoSuccess": "视频生成成功",
+    "videoFailed": "视频生成失败",
+    "videoGenerationFailed": "生成失败",
+    "videoCheckFailed": "检查状态失败",
+    "videoProgress": "生成进度",
+    "videoProcessing": "视频处理中...",
+    "videoResult": "生成结果",
+    "tryAgainLater": "请稍后重试"
+  },
+  "common": {
+    "close": "关闭"
+  }
+} 
