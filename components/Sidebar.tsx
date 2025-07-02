@@ -179,18 +179,17 @@ const Sidebar: React.FC<SidebarProps> = ({
         return;
       }
 
-      // 只在以下情况更新历史记录：
-      // 1. 首次加载
-      // 2. 用户状态改变
-      // 3. 收到历史记录更新事件
+      // 首次加载时获取本地历史记录（快速显示）
       const localHistories = getHistories();
       setHistories(localHistories);
       
       try {
+        // 异步获取合并后的历史记录（本地 + 数据库）
         const { getHistoriesAsync } = await import('../utils/storage');
-        const dbHistories = await getHistoriesAsync();
-        if (dbHistories.length > 0 && JSON.stringify(dbHistories) !== JSON.stringify(localHistories)) {
-          setHistories(dbHistories);
+        const mergedHistories = await getHistoriesAsync();
+        // 只有当合并后的历史记录与当前显示的不同时才更新
+        if (JSON.stringify(mergedHistories) !== JSON.stringify(histories)) {
+          setHistories(mergedHistories);
         }
       } catch (error) {
         console.error('加载历史记录失败:', error);
@@ -201,9 +200,18 @@ const Sidebar: React.FC<SidebarProps> = ({
 
     // 监听历史记录更新事件
     const { historyEventBus } = require('../utils/storage');
-    const unsubscribe = historyEventBus.subscribe(() => {
-      const updatedHistories = getHistories();
-      setHistories(updatedHistories);
+    const unsubscribe = historyEventBus.subscribe(async () => {
+      try {
+        // 当收到更新事件时，重新获取合并后的历史记录
+        const { getHistoriesAsync } = await import('../utils/storage');
+        const mergedHistories = await getHistoriesAsync();
+        setHistories(mergedHistories);
+      } catch (error) {
+        console.error('更新历史记录失败:', error);
+        // 如果获取合并记录失败，至少更新本地记录
+        const localHistories = getHistories();
+        setHistories(localHistories);
+      }
     });
 
     return () => {

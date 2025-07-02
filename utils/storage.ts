@@ -267,7 +267,7 @@ export const getHistories = (): ChatHistory[] => {
   }
 };
 
-// 异步获取历史记录（优先从数据库获取）
+// 异步获取历史记录（合并本地和数据库记录）
 export const getHistoriesAsync = async (): Promise<ChatHistory[]> => {
   if (!isClient) return [];
   
@@ -277,19 +277,51 @@ export const getHistoriesAsync = async (): Promise<ChatHistory[]> => {
   }
   
   try {
-    // 首先尝试从数据库获取
+    // 获取本地历史记录
+    const localHistories = getHistories();
+    
+    // 从数据库获取历史记录
     const dbHistories = await getHistoriesFromDB();
-    if (dbHistories && dbHistories.length > 0) {
-      console.log('从数据库获取历史记录成功');
-      return dbHistories;
+    
+    if (!dbHistories || dbHistories.length === 0) {
+      return localHistories;
     }
-  } catch (error) {
-    console.error('数据库获取失败，降级到localStorage:', error);
-  }
 
-  // 数据库失败或为空时，降级到localStorage
-  console.log('使用localStorage备用获取');
-  return getHistories();
+    // 合并本地和数据库记录，以ID为唯一标识
+    const mergedHistories = [...localHistories];
+    
+    dbHistories.forEach(dbHistory => {
+      const existingIndex = mergedHistories.findIndex(h => h.id === dbHistory.id);
+      if (existingIndex === -1) {
+        // 数据库中有但本地没有的记录，添加到合并列表
+        mergedHistories.push(dbHistory);
+      } else {
+        // 如果数据库记录比本地更新，则使用数据库记录
+        const localTimestamp = new Date(mergedHistories[existingIndex].timestamp).getTime();
+        const dbTimestamp = new Date(dbHistory.timestamp).getTime();
+        if (dbTimestamp > localTimestamp) {
+          mergedHistories[existingIndex] = dbHistory;
+        }
+      }
+    });
+
+    // 按时间戳排序，最新的在前面
+    mergedHistories.sort((a, b) => {
+      const timeA = new Date(a.timestamp).getTime();
+      const timeB = new Date(b.timestamp).getTime();
+      return timeB - timeA;
+    });
+
+    // 更新本地存储
+    const storageKey = getUserStorageKey(userId, 'chat_histories');
+    localStorage.setItem(storageKey, JSON.stringify(mergedHistories));
+    
+    console.log(`合并后共有 ${mergedHistories.length} 条历史记录`);
+    return mergedHistories;
+  } catch (error) {
+    console.error('获取历史记录失败:', error);
+    return getHistories(); // 失败时返回本地记录
+  }
 };
 
 export function addHistory(history: ChatHistory) {

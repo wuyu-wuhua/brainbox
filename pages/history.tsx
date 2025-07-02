@@ -431,28 +431,37 @@ export default function History() {
 
     // 首次加载时获取历史记录
     const loadHistories = async () => {
-      // 立即从本地获取历史记录并显示
+      // 立即从本地获取历史记录并显示（快速响应）
       const localHistories = getHistories();
       setHistories(localHistories);
       setLoading(false);
       
-      // 在后台异步更新数据库数据
       try {
-        const dbHistories = await getHistoriesAsync();
-        if (dbHistories && dbHistories.length > 0 && JSON.stringify(dbHistories) !== JSON.stringify(localHistories)) {
-          setHistories(dbHistories);
+        // 异步获取合并后的历史记录（本地 + 数据库）
+        const mergedHistories = await getHistoriesAsync();
+        // 只有当合并后的历史记录与当前显示的不同时才更新
+        if (JSON.stringify(mergedHistories) !== JSON.stringify(histories)) {
+          setHistories(mergedHistories);
         }
       } catch (error) {
-        console.error('后台同步历史记录失败:', error);
+        console.error('加载历史记录失败:', error);
       }
     };
 
     loadHistories();
 
     // 监听历史记录更新事件
-    const unsubscribe = historyEventBus.subscribe(() => {
-      const updatedHistories = getHistories();
-      setHistories(updatedHistories);
+    const unsubscribe = historyEventBus.subscribe(async () => {
+      try {
+        // 当收到更新事件时，重新获取合并后的历史记录
+        const mergedHistories = await getHistoriesAsync();
+        setHistories(mergedHistories);
+      } catch (error) {
+        console.error('更新历史记录失败:', error);
+        // 如果获取合并记录失败，至少更新本地记录
+        const localHistories = getHistories();
+        setHistories(localHistories);
+      }
     });
 
     return () => {
