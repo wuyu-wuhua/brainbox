@@ -418,6 +418,8 @@ export default function History() {
   const batchDeleteCancelRef = useRef<HTMLButtonElement>(null);
   const { t } = useLanguage();
   const { user } = useAuth();
+  const lastUpdateRef = useRef<number>(0);
+  const updateIntervalRef = useRef<number>(30000); // 30秒更新一次
 
   // 获取历史记录的函数
   const loadHistories = async (forceSync = false) => {
@@ -426,23 +428,28 @@ export default function History() {
       setLoading(false);
       return;
     }
+
+    const now = Date.now();
+    // 如果不是强制同步且距离上次更新时间不足30秒，则不更新
+    if (!forceSync && now - lastUpdateRef.current < updateIntervalRef.current) {
+      return;
+    }
     
-    // 立即从本地获取历史记录并显示（不显示loading）
+    // 立即从本地获取历史记录并显示
     const localHistories = getHistories();
     setHistories(localHistories);
-    setLoading(false); // 立即设置为false，显示本地数据
+    setLoading(false);
+    lastUpdateRef.current = now;
     
-    // 只有在强制同步或本地无数据时才从数据库同步
-    if (forceSync || localHistories.length === 0) {
-      try {
-        const dbHistories = await getHistoriesAsync();
-        if (dbHistories && dbHistories.length > 0) {
-          setHistories(dbHistories);
-        }
-      } catch (error) {
-        console.error('后台同步历史记录失败:', error);
-        // 数据库失败不影响显示，已经有本地数据了
+    // 在后台异步更新数据库数据
+    try {
+      const dbHistories = await getHistoriesAsync();
+      if (dbHistories && dbHistories.length > 0 && JSON.stringify(dbHistories) !== JSON.stringify(localHistories)) {
+        setHistories(dbHistories);
+        lastUpdateRef.current = now;
       }
+    } catch (error) {
+      console.error('后台同步历史记录失败:', error);
     }
   };
 
@@ -459,40 +466,24 @@ export default function History() {
     setHistories(localHistories);
     setLoading(false);
 
-    // 仅在首次加载且本地无数据时异步同步数据库数据
-    if (localHistories.length === 0) {
-      loadHistories(false);
-    }
+    // 仅在首次加载时异步同步数据库数据
+    loadHistories(false);
 
     // 监听历史记录更新事件
     const unsubscribe = historyEventBus.subscribe(() => {
+      const now = Date.now();
+      // 如果距离上次更新时间不足30秒，则不更新
+      if (now - lastUpdateRef.current < updateIntervalRef.current) {
+        return;
+      }
       const updatedHistories = getHistories();
       setHistories(updatedHistories);
+      lastUpdateRef.current = now;
     });
-
-    // 监听来自其他页面的历史记录更新事件
-    const handleHistoryUpdated = () => {
-      const updatedHistories = getHistories();
-      setHistories(updatedHistories);
-    };
-
-    window.addEventListener('history-updated', handleHistoryUpdated);
 
     return () => {
       unsubscribe();
-      window.removeEventListener('history-updated', handleHistoryUpdated);
     };
-  }, []);
-
-  // 监听用户登录状态变化
-  useEffect(() => {
-    if (!user) {
-      setHistories([]);
-      setLoading(false);
-    } else {
-      // 用户登录时，强制同步数据库数据
-      loadHistories(true);
-    }
   }, [user]);
 
   const handleClearAll = () => {

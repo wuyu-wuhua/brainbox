@@ -34,9 +34,10 @@ import { useLanguage } from '../contexts/LanguageContext'
 interface LoginModalProps {
   isOpen: boolean
   onClose: () => void
+  onContinueAsGuest?: () => void
 }
 
-export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
+export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onContinueAsGuest }) => {
   const { signInWithGoogle, loading, isConfigured } = useAuth()
   const { t } = useLanguage()
   const bgColor = useColorModeValue('white', 'gray.800')
@@ -111,7 +112,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       <ModalOverlay />
       <ModalContent bg={bgColor} mx={4}>
         <ModalHeader textAlign="center" pb={2}>
-          {isRegisterMode ? '注册到 BrainBox' : t('auth.loginTitle')}
+          {isRegisterMode ? t('auth.registerTitle') : t('auth.loginTitle')}
         </ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={6}>
@@ -141,17 +142,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 textAlign="center"
                 mb={2}
               >
-                {isRegisterMode ? '创建您的账户' : t('auth.loginDescription')}
+                {isRegisterMode ? t('auth.registerDescription') : t('auth.loginDescription')}
               </Text>
             )}
 
             <VStack spacing={3} width="100%">
               {/* 邮箱密码登录表单 */}
               <FormControl isInvalid={!!formErrors.email}>
-                <FormLabel fontSize="sm">邮箱地址</FormLabel>
+                <FormLabel fontSize="sm">{t('auth.emailAddress')}</FormLabel>
                 <Input
                   type="email"
-                  placeholder="请输入邮箱地址"
+                  placeholder={t('auth.emailPlaceholder')}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   bg={useColorModeValue('white', 'gray.700')}
@@ -161,11 +162,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               </FormControl>
 
               <FormControl isInvalid={!!formErrors.password}>
-                <FormLabel fontSize="sm">密码</FormLabel>
+                <FormLabel fontSize="sm">{t('auth.password')}</FormLabel>
                 <InputGroup>
                   <Input
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="请输入密码"
+                    placeholder={t('auth.passwordPlaceholder')}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     bg={useColorModeValue('white', 'gray.700')}
@@ -186,11 +187,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
               {isRegisterMode && (
                 <FormControl isInvalid={!!formErrors.confirmPassword}>
-                  <FormLabel fontSize="sm">确认密码</FormLabel>
+                  <FormLabel fontSize="sm">{t('auth.confirmPassword')}</FormLabel>
                   <InputGroup>
                     <Input
                       type={showConfirmPassword ? 'text' : 'password'}
-                      placeholder="请再次输入密码"
+                      placeholder={t('auth.confirmPasswordPlaceholder')}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       bg={useColorModeValue('white', 'gray.700')}
@@ -219,7 +220,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 colorScheme="purple"
                 isDisabled={!isConfigured}
               >
-                {isRegisterMode ? '立即注册' : '立即登录'}
+                {isRegisterMode ? t('auth.registerButton') : t('auth.loginButton')}
               </Button>
 
               <HStack width="100%" my={2}>
@@ -246,14 +247,20 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                   _dark: { bg: isConfigured ? 'red.900' : 'gray.700' }
                 }}
               >
-                {isRegisterMode ? '使用 Google 注册' : t('auth.loginWithGoogle')}
+                {isRegisterMode ? t('auth.registerWithGoogle') : t('auth.loginWithGoogle')}
               </Button>
 
               <Button
-                onClick={onClose}
+                onClick={() => {
+                  if (onContinueAsGuest) {
+                    onContinueAsGuest()
+                  }
+                  onClose()
+                }}
                 width="100%"
-                variant="ghost"
                 size="lg"
+                variant="ghost"
+                colorScheme="gray"
               >
                 {t('auth.continueAsGuest')}
               </Button>
@@ -261,16 +268,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
             {/* 注册/登录切换链接 */}
             <Text fontSize="sm" color="gray.600" _dark={{ color: 'gray.400' }} textAlign="center">
-              {isRegisterMode ? '已有账户？' : '还没有账户？'}
-            <Button
+              {isRegisterMode ? t('auth.haveAccount') : t('auth.noAccount')}
+              <Button
                 variant="link"
                 size="sm"
                 colorScheme="purple"
                 onClick={switchMode}
                 ml={1}
-            >
-                {isRegisterMode ? '立即登录' : '立即注册'}
-            </Button>
+              >
+                {isRegisterMode ? t('auth.goToLogin') : t('auth.goToRegister')}
+              </Button>
             </Text>
           </VStack>
         </ModalBody>

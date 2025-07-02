@@ -230,11 +230,11 @@ const SpacePage = () => {
             <Alert status="warning">
               <AlertIcon />
               <Box>
-                <AlertTitle>需要登录</AlertTitle>
+                <AlertTitle>{t('login.spaceLoginPrompt')}</AlertTitle>
                 <AlertDescription>
-                  请先登录以查看个人空间。
+                  {t('login.spaceLoginPromptDesc')}
                   <Button ml={4} size="sm" onClick={() => router.push('/')}>
-                    返回首页
+                    {t('login.backToHome')}
                   </Button>
                 </AlertDescription>
               </Box>

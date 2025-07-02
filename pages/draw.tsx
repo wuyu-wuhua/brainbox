@@ -679,7 +679,7 @@ export default function Draw() {
                         <Text mb={2} fontSize="sm" fontWeight="medium">{t('draw.size')}</Text>
                         <Select value={size} onChange={(e) => setSize(e.target.value)}>
                           <option value="1:1">{t('draw.sizeSquare')} (1024×1024)</option>
-                          <option value="3:4">{t('draw.sizePortrait')} (720×1280)</option>
+                          <option value="3:4">{t('draw.sizePortrait')} (768*1152)</option>
                           <option value="4:3">{t('draw.sizeLandscape')} (1280×720)</option>
                           <option value="16:9">{t('draw.sizeWidescreen')} (1280×720)</option>
                           <option value="9:16">{t('draw.sizeMobilePortrait')} (720×1280)</option>

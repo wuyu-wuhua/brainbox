@@ -168,6 +168,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   const { t } = useLanguage();
   const { user } = useAuth();
   const { isOpen: isLoginOpen, onOpen: onLoginOpen, onClose: onLoginClose } = useDisclosure();
+  const router = useRouter();
+  const lastUpdateRef = useRef<number>(0);
+  const updateIntervalRef = useRef<number>(30000); // 30秒更新一次
 
   useEffect(() => {
     const loadHistories = async () => {
@@ -175,20 +178,25 @@ const Sidebar: React.FC<SidebarProps> = ({
         setHistories([]);
         return;
       }
+
+      const now = Date.now();
+      // 如果距离上次更新时间不足30秒，则不更新
+      if (now - lastUpdateRef.current < updateIntervalRef.current) {
+        return;
+      }
       
       // 先从本地获取历史记录（立即响应）
       const localHistories = getHistories();
-      if (localHistories.length > 0) {
-        setHistories(localHistories);
-        return; // 如果本地有数据，就不需要从数据库加载
-      }
+      setHistories(localHistories);
+      lastUpdateRef.current = now;
       
       try {
-        // 只有在本地没有数据时才从数据库获取
+        // 在后台异步更新数据库数据
         const { getHistoriesAsync } = await import('../utils/storage');
         const dbHistories = await getHistoriesAsync();
-        if (dbHistories.length > 0) {
+        if (dbHistories.length > 0 && JSON.stringify(dbHistories) !== JSON.stringify(localHistories)) {
           setHistories(dbHistories);
+          lastUpdateRef.current = now;
         }
       } catch (error) {
         console.error('加载历史记录失败:', error);
@@ -200,8 +208,14 @@ const Sidebar: React.FC<SidebarProps> = ({
     // 监听历史记录更新事件
     const { historyEventBus } = require('../utils/storage');
     const unsubscribe = historyEventBus.subscribe(() => {
+      const now = Date.now();
+      // 如果距离上次更新时间不足30秒，则不更新
+      if (now - lastUpdateRef.current < updateIntervalRef.current) {
+        return;
+      }
       const updatedHistories = getHistories();
       setHistories(updatedHistories);
+      lastUpdateRef.current = now;
     });
 
     return () => {
@@ -218,8 +232,6 @@ const Sidebar: React.FC<SidebarProps> = ({
     });
     onClearClose();
   };
-
-  const router = useRouter();
 
   const handleLoadChat = (history: ChatHistory) => {
     if (!checkLoginStatus()) return;
