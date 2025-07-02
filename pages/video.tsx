@@ -3026,7 +3026,7 @@ export default function Video() {
       </Box>
       
       {/* 登录模态框 */}
-      <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
+      <LoginModal isOpen={isLoginOpen} onClose={onLoginClose} />
     </Box>
   );
 } 
