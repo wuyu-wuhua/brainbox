@@ -542,6 +542,7 @@ export default function Read() {
   };
 
   const handleSendMessage = async () => {
+    if (!checkLoginStatus()) return;
     if (!currentMessage.trim() || !documentContent) return;
     
     const userMessage: ChatMessage = {

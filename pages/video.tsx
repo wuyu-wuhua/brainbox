@@ -743,6 +743,18 @@ export default function Video() {
   };
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    // 检查用户是否已登录
+    if (!user) {
+      setIsLoginOpen(true);
+      toast({
+        title: '请先登录',
+        description: '登录后即可使用AI视频功能',
+        status: 'warning',
+        duration: 3000,
+      });
+      return;
+    }
+
     const file = event.target.files?.[0];
     if (file) {
       if (file.type.startsWith('image/')) {
@@ -1212,6 +1224,18 @@ export default function Video() {
 
     // 图片上传处理
     const handleGen3ImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+      // 检查用户是否已登录
+      if (!user) {
+        setIsLoginOpen(true);
+        toast({
+          title: '请先登录',
+          description: '登录后即可使用AI视频功能',
+          status: 'warning',
+          duration: 3000,
+        });
+        return;
+      }
+
       const file = event.target.files?.[0];
       if (file) {
         const reader = new FileReader();
@@ -1505,7 +1529,7 @@ export default function Video() {
                 // 视频生成完成
                 // 创建AI回复消息
                 const aiMessage = {
-                  content: `您好！我是Google Veo 3 AI助手 🎬\n\n根据您的描述我已经为您生成了高质量的5秒视频。`,
+                  content: ``,
                   isUser: false,
                   timestamp: new Date().toISOString(),
                   videoUrl: videoUrl,
@@ -1614,7 +1638,7 @@ export default function Video() {
           
           // 创建AI回复消息
           const aiMessage = {
-            content: `您好！我是Google Veo 3 AI助手 🎬\n\n根据您的描述我已经为您生成了高质量的5秒视频。`,
+                            content: ``,
             isUser: false,
             timestamp: new Date().toISOString(),
             videoUrl: data.videoUrl,
@@ -2162,6 +2186,17 @@ export default function Video() {
                         placeholder={t('video.promptPlaceholder')}
                         value={gen3Prompt}
                         onChange={(e) => setGen3Prompt(e.target.value)}
+                        onFocus={() => {
+                          if (!user) {
+                            setIsLoginOpen(true);
+                            toast({
+                              title: '请先登录',
+                              description: '登录后即可使用AI视频功能',
+                              status: 'warning',
+                              duration: 3000,
+                            });
+                          }
+                        }}
                         onKeyPress={(e) => {
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
@@ -2447,6 +2482,17 @@ export default function Video() {
                                 placeholder={t('video.descriptionPlaceholder')}
                                 value={prompt}
                                 onChange={e => setPrompt(e.target.value)}
+                                onFocus={() => {
+                                  if (!user) {
+                                    setIsLoginOpen(true);
+                                    toast({
+                                      title: '请先登录',
+                                      description: '登录后即可使用AI视频功能',
+                                      status: 'warning',
+                                      duration: 3000,
+                                    });
+                                  }
+                                }}
                                 rows={2}
                                 size="lg"
                                 borderRadius="md"
@@ -2667,6 +2713,12 @@ export default function Video() {
                                 h="120px"
                                 onClick={handleUploadClick}
                                 borderStyle="dashed"
+                                bg={useColorModeValue('gray.50', 'gray.700')}
+                                borderColor={useColorModeValue('gray.300', 'gray.600')}
+                                _hover={{
+                                  bg: useColorModeValue('gray.100', 'gray.600'),
+                                  borderColor: useColorModeValue('gray.400', 'gray.500')
+                                }}
                               >
                                 <VStack spacing={2}>
                                   <Text>{t('video.uploadImage')}</Text>
@@ -2712,6 +2764,17 @@ export default function Video() {
                               placeholder={t('video.motionPlaceholder')}
                               value={prompt}
                               onChange={(e) => setPrompt(e.target.value)}
+                              onFocus={() => {
+                                if (!user) {
+                                  setIsLoginOpen(true);
+                                  toast({
+                                    title: '请先登录',
+                                    description: '登录后即可使用AI视频功能',
+                                    status: 'warning',
+                                    duration: 3000,
+                                  });
+                                }
+                              }}
                               rows={3}
                               resize="vertical"
                             />

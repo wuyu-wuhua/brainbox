@@ -23,7 +23,9 @@ import {
 import { FaTimes, FaPaperPlane } from 'react-icons/fa';
 import { FiEdit } from 'react-icons/fi';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Message } from '../../types/chat';
+import { LoginModal } from '../LoginModal';
 
 interface WriteViewProps {
   onClose: () => void;
@@ -43,6 +45,7 @@ const WriteView: React.FC<WriteViewProps> = ({
   creditCost = 5,
 }) => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const toast = useToast();
   
   const [inputText, setInputText] = useState('');
@@ -88,6 +91,17 @@ const WriteView: React.FC<WriteViewProps> = ({
   ];
 
   const handleWrite = async () => {
+    // 检查用户是否已登录
+    if (!user) {
+      toast({
+        title: '请先登录',
+        description: '登录后即可使用AI写作功能',
+        status: 'warning',
+        duration: 3000,
+      });
+      return;
+    }
+
     if (!inputText.trim()) {
       toast({
         title: '请输入写作主题',

@@ -420,7 +420,7 @@ export default function History() {
   const { user } = useAuth();
 
   // 获取历史记录的函数
-  const loadHistories = async () => {
+  const loadHistories = async (forceSync = false) => {
     if (!user) {
       setHistories([]);
       setLoading(false);
@@ -432,15 +432,17 @@ export default function History() {
     setHistories(localHistories);
     setLoading(false); // 立即设置为false，显示本地数据
     
-    // 后台异步从数据库获取最新数据（静默更新）
-    try {
-      const dbHistories = await getHistoriesAsync();
-      if (dbHistories && dbHistories.length > 0) {
-        setHistories(dbHistories);
+    // 只有在强制同步或本地无数据时才从数据库同步
+    if (forceSync || localHistories.length === 0) {
+      try {
+        const dbHistories = await getHistoriesAsync();
+        if (dbHistories && dbHistories.length > 0) {
+          setHistories(dbHistories);
+        }
+      } catch (error) {
+        console.error('后台同步历史记录失败:', error);
+        // 数据库失败不影响显示，已经有本地数据了
       }
-    } catch (error) {
-      console.error('后台同步历史记录失败:', error);
-      // 数据库失败不影响显示，已经有本地数据了
     }
   };
 
@@ -457,8 +459,10 @@ export default function History() {
     setHistories(localHistories);
     setLoading(false);
 
-    // 然后异步同步数据库数据
-    loadHistories();
+    // 仅在首次加载且本地无数据时异步同步数据库数据
+    if (localHistories.length === 0) {
+      loadHistories(false);
+    }
 
     // 监听历史记录更新事件
     const unsubscribe = historyEventBus.subscribe(() => {
@@ -478,6 +482,17 @@ export default function History() {
       unsubscribe();
       window.removeEventListener('history-updated', handleHistoryUpdated);
     };
+  }, []);
+
+  // 监听用户登录状态变化
+  useEffect(() => {
+    if (!user) {
+      setHistories([]);
+      setLoading(false);
+    } else {
+      // 用户登录时，强制同步数据库数据
+      loadHistories(true);
+    }
   }, [user]);
 
   const handleClearAll = () => {
@@ -664,14 +679,14 @@ export default function History() {
             ) : histories.length === 0 ? (
               <Box textAlign="center" py={10}>
                 <Text fontSize="lg" color="gray.500" mb={4}>
-                  {user ? t('history.noHistory') : '请先登录查看历史记录'}
+                  {user ? t('history.noHistory') : t('history.pleaseLoginFirst')}
                 </Text>
                 {user && (
                   <Button 
                     colorScheme="purple" 
                     onClick={() => router.push('/')}
                   >
-                    开始新对话
+                    {t('history.startNewChat')}
                   </Button>
                 )}
               </Box>

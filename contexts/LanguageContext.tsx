@@ -276,6 +276,8 @@ const translations = {
     'history.renamePlaceholderNew': '请输入新的标题',
     'history.renameSuccess': '重命名成功',
     'history.moreOptions': '更多选项',
+    'history.startNewChat': '开始新对话',
+    'history.pleaseLoginFirst': '请先登录查看历史记录',
     
     // 个人空间
     'space.title': '个人空间',
@@ -437,6 +439,7 @@ const translations = {
     'video.aspectRatio.4-3': '4:3 (传统)',
     'video.aspectRatio.16-9.desc': '适合电脑观看',
     'video.aspectRatio.9-16.desc': '适合手机观看',
+    'video.generateVideo': '生成视频',
     'video.aspectRatio.1-1.desc': '适合社交媒体',
     'video.aspectRatio.4-3.desc': '传统电视宽高比',
     'video.duration': '视频时长',
@@ -517,12 +520,13 @@ const translations = {
     'membership.monthlyMember': '月付费会员',
     'membership.freePrice': '免费',
     'membership.annualPrice': '$9.9',
-    'membership.annualOrigin': '原价 $118.8/年',
+    'membership.annualOrigin': '原价202.8元/年',
+    'membership.annualSpecial': '特惠118.8/年',
     'membership.monthlyPrice': '$16.9',
     'membership.period': '/月',
     'membership.popular': '最受欢迎',
     'membership.freeDesc': '适合个人体验5次/每天',
-    'membership.annualDesc': '年付更优惠，省80%',
+    'membership.annualDesc': '年付更优惠，省41%',
     'membership.monthlyDesc': '灵活订阅，按月付费',
     'membership.annualFeatures': '获取150000积分, 额外赠送30000积分, 常规模型无限次对话, 高级模型可对话500次, 生成图片100张, 生成视频25条, 优先客服支持',
     'membership.monthlyFeatures': '获取10000积分, 常规模型无限次对话, 高级模型可对话500次, 生成图片100张, 生成视频25条, 标准客服支持',
@@ -876,6 +880,8 @@ const translations = {
     'history.renamePlaceholderNew': 'Enter new title',
     'history.renameSuccess': 'Rename successful',
     'history.moreOptions': 'More Options',
+    'history.startNewChat': 'Start New Chat',
+    'history.pleaseLoginFirst': 'Please login first to view history',
     
     // 个人空间
     'space.title': 'Personal Space',
@@ -1036,6 +1042,7 @@ const translations = {
     'video.aspectRatio.4-3': '4:3 (Traditional)',
     'video.aspectRatio.16-9.desc': 'Suitable for computer viewing',
     'video.aspectRatio.9-16.desc': 'Suitable for mobile viewing',
+    'video.generateVideo': 'Generate Video',
     'video.aspectRatio.1-1.desc': 'Suitable for social media',
     'video.aspectRatio.4-3.desc': 'Traditional TV aspect ratio',
     'video.duration': 'Video Duration',
@@ -1118,12 +1125,13 @@ const translations = {
     'membership.monthlyMember': 'Monthly Member',
     'membership.freePrice': 'Free',
     'membership.annualPrice': '$9.9',
-    'membership.annualOrigin': 'Original $118.8/year',
+    'membership.annualOrigin': 'Original ¥202.8/year',
+    'membership.annualSpecial': 'Special ¥118.8/year',
     'membership.monthlyPrice': '$16.9',
     'membership.period': '/mo',
     'membership.popular': 'Most Popular',
     'membership.freeDesc': 'Ideal for personal trial, 5 times/day',
-    'membership.annualDesc': 'Annual payment saves 80%',
+    'membership.annualDesc': 'Annual payment saves 41%',
     'membership.monthlyDesc': 'Flexible monthly subscription',
     'membership.annualFeatures': 'Get 150,000 credits, Extra 30,000 credits, Unlimited chats with regular models, 500 chats with advanced models, Generate 100 images, Generate 25 videos, Priority customer support',
     'membership.monthlyFeatures': 'Get 10,000 credits, Unlimited chats with regular models, 500 chats with advanced models, Generate 100 images, Generate 25 videos, Standard customer support',
@@ -1223,7 +1231,7 @@ interface LanguageProviderProps {
 }
 
 export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) => {
-  const [language, setLanguageState] = useState<Language>('zh');
+  const [language, setLanguageState] = useState<Language>('en');
 
   useEffect(() => {
     const savedLanguage = localStorage.getItem('language') as Language;

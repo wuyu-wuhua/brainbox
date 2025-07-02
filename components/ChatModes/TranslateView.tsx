@@ -21,6 +21,7 @@ import {
 import { FaTimes, FaPaperPlane } from 'react-icons/fa';
 import { FiGlobe } from 'react-icons/fi';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Message } from '../../types/chat';
 
 interface TranslateViewProps {
@@ -47,6 +48,7 @@ const TranslateView: React.FC<TranslateViewProps> = ({
   creditCost = 5,
 }) => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const toast = useToast();
   
   const [inputText, setInputText] = useState('');
@@ -70,6 +72,17 @@ const TranslateView: React.FC<TranslateViewProps> = ({
   const toneDisclosure = useDisclosure();
 
   const handleTranslate = async () => {
+    // 检查用户是否已登录
+    if (!user) {
+      toast({
+        title: '请先登录',
+        description: '登录后即可使用AI翻译功能',
+        status: 'warning',
+        duration: 3000,
+      });
+      return;
+    }
+
     if (!inputText.trim()) {
       toast({
         title: '请输入要翻译的文本',

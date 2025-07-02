@@ -141,6 +141,15 @@ export default function Home() {
       console.log('目标历史记录ID:', targetHistory.id);
       console.log('历史记录类型:', targetHistory.type);
       console.log('历史记录消息数量:', targetHistory.messages.length);
+
+      // 检查是否是相同的历史记录，避免重复加载和刷新
+      if (currentSessionIdRef.current === targetHistory.id && messages.length === targetHistory.messages.length) {
+        console.log('相同历史记录，跳过加载');
+        // 清除URL参数但不重复加载
+        router.replace('/', undefined, { shallow: true });
+        return;
+      }
+
       if (typeof window !== 'undefined') {
         sessionStorage.removeItem('newChatSession');
         sessionStorage.removeItem('fromOtherPage');
@@ -164,13 +173,16 @@ export default function Home() {
         }
       }, 100);
       console.log('=== 历史记录加载完成 ===');
+      
+      // 清除URL参数，避免重复触发
+      router.replace('/', undefined, { shallow: true });
+
       toast({
-        title: '已加载历史记录',
+        title: t('history.restored'),
         description: `${t('history.restored')} ${targetHistory.type === 'read' ? t('history.documentChat') : t('history.chat')} - ${targetHistory.messages.length} ${t('history.records')}`,
         status: 'success',
-        duration: 2000,
+        duration: 1500,
       });
-
     }
   }, [router.query.loadHistory]);
 
@@ -508,6 +520,18 @@ export default function Home() {
     console.log('当前currentSessionIdRef.current:', currentSessionIdRef.current);
     console.log('是否有AI回复:', !!aiResponse);
     
+    // 检查用户是否已登录
+    if (!user) {
+      onLoginOpen();
+      toast({
+        title: '请先登录',
+        description: '登录后即可使用AI功能',
+        status: 'warning',
+        duration: 3000,
+      });
+      return;
+    }
+    
     // 如果提供了AI回复（如翻译功能），直接添加两条消息
     if (aiResponse) {
       const newMessages = [...messages, userMessage, aiResponse];
@@ -715,8 +739,12 @@ export default function Home() {
     console.log('=== 直接加载历史记录开始 ===');
     console.log('历史记录ID:', history.id);
     console.log('历史记录消息数量:', history.messages.length);
-    console.log('当前currentSessionId:', currentSessionId);
-    console.log('当前currentSessionIdRef.current:', currentSessionIdRef.current);
+
+    // 检查是否是相同的历史记录，避免重复加载
+    if (currentSessionIdRef.current === history.id && messages.length === history.messages.length) {
+      console.log('相同历史记录，跳过加载');
+      return;
+    }
 
     // 清除所有可能影响状态的标记
     if (typeof window !== 'undefined') {
@@ -738,17 +766,15 @@ export default function Home() {
     setCurrentSessionId(history.id);
     currentSessionIdRef.current = history.id;
 
-    // 不再更新URL参数！！！
-    // router.replace({ pathname: '/', query: { loadHistory: history.id } }, undefined, { shallow: true });
     console.log('设置完成，当前会话ID:', history.id);
     console.log('当前消息数量:', history.messages?.length || 0);
     console.log('=== 直接加载历史记录结束 ===');
 
     toast({
-      title: '已加载历史记录',
-      description: `已恢复 ${history.messages?.length || 0} 条对话记录`,
+      title: t('history.restored'),
+      description: `${t('history.restored')} ${history.messages?.length || 0} ${t('history.records')}`,
       status: 'success',
-      duration: 2000,
+      duration: 1500,
     });
   };
 
@@ -1187,10 +1213,10 @@ export default function Home() {
                     </>
                   ) : (
                     <Box>
-                      {chatMode === 'write' && <WriteView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
-                      {chatMode === 'translate' && <TranslateView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} selectedModel={models.find(m => m.name === selectedModel)} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
-                      {chatMode === 'travel' && <TravelView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
-                      {chatMode === 'script' && <ScriptView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
+                      {chatMode === 'write' && <WriteView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={5} />}
+                      {chatMode === 'translate' && <TranslateView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} selectedModel={models.find(m => m.name === selectedModel)} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={5} />}
+                      {chatMode === 'travel' && <TravelView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={5} />}
+                      {chatMode === 'script' && <ScriptView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={5} />}
 
                       {chatMode === 'video' && <VideoView onClose={() => setChatMode('default')} />}
                     </Box>
@@ -1363,10 +1389,10 @@ export default function Home() {
                       </>
                     ) : (
                       <Box>
-                        {chatMode === 'write' && <WriteView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
-                        {chatMode === 'translate' && <TranslateView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} selectedModel={models.find(m => m.name === selectedModel)} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
-                        {chatMode === 'travel' && <TravelView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
-                        {chatMode === 'script' && <ScriptView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={creditCost} />}
+                        {chatMode === 'write' && <WriteView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={5} />}
+                        {chatMode === 'translate' && <TranslateView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} selectedModel={models.find(m => m.name === selectedModel)} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={5} />}
+                        {chatMode === 'travel' && <TravelView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={5} />}
+                        {chatMode === 'script' && <ScriptView onClose={() => setChatMode('default')} onSendMessage={handleSpecialModeSendMessage} isFreeUser={isFreeUser} freeQuota={freeQuota} freeUsed={freeUsed} creditCost={5} />}
 
                         {chatMode === 'video' && <VideoView onClose={() => setChatMode('default')} />}
                       </Box>

@@ -15,6 +15,7 @@ import {
 import { FaTimes, FaPaperPlane } from 'react-icons/fa';
 import { FiFilm } from 'react-icons/fi';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Message } from '../../types/chat';
 
 interface ScriptViewProps {
@@ -35,6 +36,7 @@ const ScriptView: React.FC<ScriptViewProps> = ({
   creditCost = 5,
 }) => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const toast = useToast();
   
   const [idea, setIdea] = useState('');
@@ -61,6 +63,17 @@ const ScriptView: React.FC<ScriptViewProps> = ({
   ];
 
   const handleCreateScript = async () => {
+    // 检查用户是否已登录
+    if (!user) {
+      toast({
+        title: '请先登录',
+        description: '登录后即可使用AI剧本创作功能',
+        status: 'warning',
+        duration: 3000,
+      });
+      return;
+    }
+
     if (!idea.trim()) {
       toast({
         title: t('script.pleaseInputIdea'),

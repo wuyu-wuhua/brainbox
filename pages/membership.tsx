@@ -389,9 +389,14 @@ const MembershipPage = () => {
                       </Text>
                     </HStack>
                     {plan.originalPrice && (
-                      <Text fontSize="sm" color="gray.500" textDecoration="line-through">
-                        {t('membership.annualOrigin')}
-                      </Text>
+                      <VStack spacing={0} align="flex-start">
+                        <Text fontSize="sm" color="gray.500" textDecoration="line-through">
+                          {t('membership.annualOrigin')}
+                        </Text>
+                        <Text fontSize="sm" color="green.500" fontWeight="medium">
+                          {t('membership.annualSpecial')}
+                        </Text>
+                      </VStack>
                     )}
                   </Box>
                   

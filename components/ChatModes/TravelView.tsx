@@ -24,6 +24,7 @@ import {
 import { FaTimes, FaPaperPlane } from 'react-icons/fa';
 import { FiMap } from 'react-icons/fi';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Message } from '../../types/chat';
 
 interface TravelViewProps {
@@ -44,6 +45,7 @@ const TravelView: React.FC<TravelViewProps> = ({
   creditCost = 5,
 }) => {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const toast = useToast();
   
   const [destination, setDestination] = useState('');
@@ -79,6 +81,17 @@ const TravelView: React.FC<TravelViewProps> = ({
   const paceDisclosure = useDisclosure();
 
   const handlePlan = async () => {
+    // 检查用户是否已登录
+    if (!user) {
+      toast({
+        title: '请先登录',
+        description: '登录后即可使用AI旅行规划功能',
+        status: 'warning',
+        duration: 3000,
+      });
+      return;
+    }
+
     if (!destination.trim()) {
       toast({
         title: '请输入目的地',
