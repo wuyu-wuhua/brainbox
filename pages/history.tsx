@@ -469,26 +469,59 @@ export default function History() {
     };
   }, [user]); // 只在用户状态改变时重新加载
 
-  const handleClearAll = () => {
-    clearHistories();
-    setHistories([]);
-    toast({
-      title: t('history.clearSuccess'),
-      status: 'success',
-      duration: 2000,
-    });
-    onClearAllClose();
+  const handleClearAll = async () => {
+    try {
+      setLoading(true);
+      const success = await clearHistories();
+      if (success) {
+        setHistories([]);
+        setSelectedIds([]);
+        toast({
+          title: t('history.clearSuccess'),
+          status: 'success',
+          duration: 2000,
+        });
+        onClearAllClose();
+      } else {
+        throw new Error(t('history.clearFailed'));
+      }
+    } catch (error) {
+      console.error('清空历史记录失败:', error);
+      toast({
+        title: t('history.clearFailed'),
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleDeleteHistory = (id: string) => {
-    deleteHistory(id);
-    const updatedHistories = getHistories();
-    setHistories(updatedHistories);
-    toast({
-      title: t('history.deleteSuccess'),
-      status: 'success',
-      duration: 2000,
-    });
+  const handleDelete = async (id: string) => {
+    try {
+      setLoading(true);
+      const success = await deleteHistory(id);
+      if (success) {
+        // 从本地状态中移除被删除的记录
+        setHistories(prev => prev.filter(h => h.id !== id));
+        toast({
+          title: t('history.deleteSuccess'),
+          status: 'success',
+          duration: 2000,
+        });
+      } else {
+        throw new Error(t('history.deleteFailed'));
+      }
+    } catch (error) {
+      console.error('删除历史记录失败:', error);
+      toast({
+        title: t('history.deleteFailed'),
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRenameHistory = (id: string, newTitle: string) => {
@@ -518,18 +551,33 @@ export default function History() {
     }
   };
 
-  const handleBatchDelete = () => {
-    deleteMultipleHistories(selectedIds);
-    const updatedHistories = getHistories();
-    setHistories(updatedHistories);
-    setSelectedIds([]);
-    setIsSelectionMode(false);
-    toast({
-      title: t('history.batchDeleteSuccess', { count: selectedIds.length.toString() }),
-      status: 'success',
-      duration: 2000,
-    });
-    onBatchDeleteClose();
+  const handleBatchDelete = async () => {
+    try {
+      setLoading(true);
+      const success = await deleteMultipleHistories(selectedIds);
+      if (success) {
+        // 从本地状态中移除被删除的记录
+        setHistories(prev => prev.filter(h => !selectedIds.includes(h.id)));
+        setSelectedIds([]);
+        toast({
+          title: t('history.batchDeleteSuccess'),
+          status: 'success',
+          duration: 2000,
+        });
+        onBatchDeleteClose();
+      } else {
+        throw new Error(t('history.batchDeleteFailed'));
+      }
+    } catch (error) {
+      console.error('批量删除历史记录失败:', error);
+      toast({
+        title: t('history.batchDeleteFailed'),
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleToggleSelectionMode = () => {
@@ -538,18 +586,23 @@ export default function History() {
   };
 
   const handleNavigateToHistory = (history: ChatHistory) => {
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('pendingHistory', JSON.stringify(history));
-    }
-    
-    if (history.type === 'chat' || history.type === 'read') {
-      // 对话类型和文档类型都跳转到首页进行对话
+    if (history.type === 'chat') {
+      // 普通对话类型跳转到首页
       if (router.pathname === '/') {
-        // 直接本地还原（触发index页的useEffect）
-        window.location.reload(); // 强制刷新首页以触发pendingHistory逻辑
+        // 如果已经在首页，通过 sessionStorage 传递历史记录数据，然后导航刷新
+        sessionStorage.setItem('pendingHistoryLoad', JSON.stringify(history));
+        router.push('/?loadHistory=' + Date.now()); // 添加时间戳强制重新加载
       } else {
-        router.push('/'); // 跳转到首页，不带参数
+        // 如果不在首页，正常跳转
+        sessionStorage.setItem('pendingHistoryLoad', JSON.stringify(history));
+        router.push('/');
       }
+    } else if (history.type === 'read') {
+      // 阅读类型跳转到阅读页面
+      router.push({
+        pathname: '/read',
+        query: { loadHistory: history.id }
+      });
     } else if (history.type === 'draw') {
       const userMessage = history.messages[0]?.content || '';
       const modelParts = history.model.split('-');
@@ -675,7 +728,7 @@ export default function History() {
                   <HistoryCard
                     key={item.id}
                     history={item}
-                    onDelete={() => handleDeleteHistory(item.id)}
+                    onDelete={() => handleDelete(item.id)}
                     onNavigate={handleNavigateToHistory}
                     onRename={handleRenameHistory}
                     isSelected={selectedIds.includes(item.id)}

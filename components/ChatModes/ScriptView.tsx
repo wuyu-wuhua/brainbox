@@ -133,6 +133,13 @@ const ScriptView: React.FC<ScriptViewProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleCreateScript();
+    }
+  };
+
   return (
     <VStack 
       w="full" 
@@ -151,12 +158,12 @@ const ScriptView: React.FC<ScriptViewProps> = ({
           <Icon as={FiFilm} />
           <Text fontWeight="bold">{t('script.title')}</Text>
         </HStack>
-        <IconButton 
-          aria-label={t('common.close')} 
-          icon={<FaTimes />} 
-          size="sm" 
-          variant="ghost" 
-          onClick={onClose} 
+        <IconButton
+          icon={<FaTimes />}
+          aria-label="关闭"
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
         />
       </HStack>
       
@@ -197,12 +204,13 @@ const ScriptView: React.FC<ScriptViewProps> = ({
       <FormControl>
         <FormLabel fontSize="sm">{t('script.creative')}</FormLabel>
         <Textarea 
-          placeholder={t('script.creativePlaceholder')}
           value={idea}
           onChange={(e) => setIdea(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={t('script.creativePlaceholder')}
+          rows={3}
+          resize="none"
           isDisabled={isLoading}
-          rows={4}
-          resize="vertical"
         />
       </FormControl>
       

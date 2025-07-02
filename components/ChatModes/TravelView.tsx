@@ -187,6 +187,13 @@ ${details.trim() ? `其他要求：${details}` : ''}
     paceDisclosure.onClose();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handlePlan();
+    }
+  };
+
   const selectedBudgetLabel = budgetOptions.find(budget => budget.key === selectedBudget)?.label || budgetOptions[1].label;
   const selectedPaceLabel = paceOptions.find(pace => pace.key === selectedPace)?.label || paceOptions[1].label;
 
@@ -208,56 +215,68 @@ ${details.trim() ? `其他要求：${details}` : ''}
           <Icon as={FiMap} />
           <Text fontWeight="bold">{t('travel.title')}</Text>
         </HStack>
-        <IconButton 
-          aria-label={t('common.close')} 
-          icon={<FaTimes />} 
-          size="sm" 
-          variant="ghost" 
-          onClick={onClose} 
+        <IconButton
+          icon={<FaTimes />}
+          aria-label="关闭"
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
         />
       </HStack>
-      
-      {/* Inputs */}
-      <HStack>
-        <Input 
-          placeholder={t('travel.destination')} 
+
+      {/* 目的地和天数 - 并排布局 */}
+      <HStack spacing={3} w="full">
+        <Input
           value={destination}
           onChange={(e) => setDestination(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={t('travel.destination')}
           isDisabled={isLoading}
+          flex={1}
         />
-        <Input 
-          placeholder={t('travel.days')} 
+        <Input
           value={days}
           onChange={(e) => setDays(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={t('travel.days')}
+          type="number"
+          min={1}
+          max={30}
           isDisabled={isLoading}
+          flex={1}
         />
       </HStack>
 
       {/* Interests */}
-      <Flex wrap="wrap" gap={2}>
-        <Text fontSize="sm" w="full" mb={1} color="gray.500">{t('travel.interests')}:</Text>
-        {interestTags.map(tag => (
-          <Tag 
-            key={tag.key} 
-            variant={selectedInterests.includes(tag.key) ? 'solid' : 'outline'} 
-            colorScheme={selectedInterests.includes(tag.key) ? 'blue' : 'gray'}
-            cursor="pointer"
-            onClick={() => handleInterestToggle(tag.key)}
-            _hover={{ opacity: 0.8 }}
-          >
-            {tag.label}
-          </Tag>
-        ))}
-      </Flex>
-      
-      {/* Details Textarea */}
-      <Textarea 
-        placeholder={t('travel.details')} 
-        minH="80px" 
+      <VStack align="stretch" spacing={3}>
+        <Text fontSize="sm" color="gray.500">{t('travel.interests')}:</Text>
+        <Flex wrap="wrap" gap={2}>
+          {interestTags.map(tag => (
+            <Tag 
+              key={tag.key} 
+              variant={selectedInterests.includes(tag.key) ? 'solid' : 'outline'} 
+              colorScheme={selectedInterests.includes(tag.key) ? 'blue' : 'gray'}
+              cursor="pointer"
+              onClick={() => handleInterestToggle(tag.key)}
+              _hover={{ opacity: 0.8 }}
+            >
+              {tag.label}
+            </Tag>
+          ))}
+        </Flex>
+      </VStack>
+
+      {/* 详细要求输入框 */}
+      <Textarea
         value={details}
         onChange={(e) => setDetails(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={t('travel.details')}
+        rows={4}
+        resize="none"
         isDisabled={isLoading}
       />
+      
       {/* 预算、节奏 下拉选择器 + 发送按钮 水平对齐 */}
       <HStack spacing={3} mt={2} w="full" justify="space-between">
         <HStack spacing={3}>

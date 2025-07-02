@@ -219,14 +219,23 @@ const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [user]); // 只在用户状态改变时重新加载
 
-  const handleClearHistory = () => {
-    onClearHistory();
-    toast({
-      title: t('history.clearSuccess'),
-      status: 'success',
-      duration: 2000,
-    });
-    onClearClose();
+  const handleClearHistory = async () => {
+    try {
+      await onClearHistory();
+      toast({
+        title: t('history.clearSuccess'),
+        status: 'success',
+        duration: 2000,
+      });
+      onClearClose();
+    } catch (error) {
+      console.error('清除历史记录失败:', error);
+      toast({
+        title: t('history.clearFailed'),
+        status: 'error',
+        duration: 2000,
+      });
+    }
   };
 
   const handleLoadChat = (history: ChatHistory) => {
@@ -259,19 +268,30 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const handleDeleteChat = async (id: string) => {
-    // 动态导入存储函数
-    const { deleteHistory } = await import('../utils/storage');
-    deleteHistory(id);
-    // 重新获取最新的历史记录
-    const updatedHistories = getHistories();
-    setHistories(updatedHistories);
-    toast({
-      title: t('history.deleteSuccess'),
-      status: 'success',
-      duration: 2000,
-    });
-    setDeleteHistoryId(null);
-    onDeleteClose();
+    try {
+      // 动态导入存储函数
+      const { deleteHistory } = await import('../utils/storage');
+      await deleteHistory(id);
+      
+      // 重新获取最新的历史记录
+      const updatedHistories = getHistories();
+      setHistories(updatedHistories);
+      
+      toast({
+        title: t('history.deleteSuccess'),
+        status: 'success',
+        duration: 2000,
+      });
+      setDeleteHistoryId(null);
+      onDeleteClose();
+    } catch (error) {
+      console.error('删除历史记录失败:', error);
+      toast({
+        title: t('history.deleteFailed'),
+        status: 'error',
+        duration: 2000,
+      });
+    }
   };
 
   const handleDeleteConfirm = (id: string) => {
@@ -338,13 +358,17 @@ const Sidebar: React.FC<SidebarProps> = ({
         css={{
           '&::-webkit-scrollbar': {
             width: '4px',
+            height: '0px',
           },
           '&::-webkit-scrollbar-track': {
-            width: '6px',
+            background: 'transparent',
           },
           '&::-webkit-scrollbar-thumb': {
-            background: useColorModeValue('gray.300', 'gray.600'),
+            background: useColorModeValue('rgba(0,0,0,0.1)', 'rgba(255,255,255,0.1)'),
             borderRadius: '24px',
+          },
+          '&::-webkit-scrollbar-thumb:hover': {
+            background: useColorModeValue('rgba(0,0,0,0.2)', 'rgba(255,255,255,0.2)'),
           },
         }}
     >
@@ -468,33 +492,35 @@ const Sidebar: React.FC<SidebarProps> = ({
                       {history.title}
                     </Text>
                   </Button>
-                <Menu>
-                  <MenuButton
-                    as={IconButton}
-                    icon={<FiMoreVertical />}
-                    variant="ghost"
-                    size="sm"
-                    position="absolute"
-                    right={1}
-                    top={2}
-                    aria-label="更多操作"
-                    display={{ base: 'none', md: 'flex' }}
-                    _hover={{ bg: 'transparent' }}
-                  />
-                  <MenuList>
-                    <MenuItem icon={<FiEdit2 />} onClick={() => handleRename(history)}>
-                      {t('history.rename')}
-                    </MenuItem>
-                    <MenuItem onClick={() => handleDeleteConfirm(history.id)} color="red.500">
-                      {t('history.delete')}
-                    </MenuItem>
-                  </MenuList>
-                </Menu>
-              </Flex>
-            </Box>
+                  <Box position="relative">
+                    <Menu>
+                      <MenuButton
+                        as={IconButton}
+                        icon={<FiMoreVertical />}
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t('history.moreOptions')}
+                        display="flex"
+                        _hover={{ bg: useColorModeValue('gray.200', 'gray.500') }}
+                        color={useColorModeValue('gray.600', 'gray.400')}
+                        borderRadius="full"
+                        zIndex={2}
+                      />
+                      <MenuList>
+                        <MenuItem icon={<FiEdit2 />} onClick={() => handleRename(history)}>
+                          {t('history.rename')}
+                        </MenuItem>
+                        <MenuItem icon={<FiTrash2 />} onClick={() => handleDeleteConfirm(history.id)} color="red.500">
+                          {t('history.delete')}
+                        </MenuItem>
+                      </MenuList>
+                    </Menu>
+                  </Box>
+                </Flex>
+              </Box>
             );
           })}
-      </VStack>
+        </VStack>
     </Box>
 
       {/* 重命名对话框 */}

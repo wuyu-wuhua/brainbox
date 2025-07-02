@@ -512,7 +512,7 @@ export default function Video() {
       console.log('视频生成响应:', data);
       
       // 处理不同的响应格式
-      if (data.success && data.taskId) {
+      if (data.success && data.taskId && !data.videoUrl) {
         // 异步任务模式 - 需要轮询状态
         console.log('检测到异步任务模式，开始轮询状态...');
         const taskId = data.taskId;
@@ -1533,7 +1533,7 @@ export default function Video() {
 
         const data = await response.json();
 
-        if (data.success && data.taskId) {
+        if (data.success && data.taskId && !data.videoUrl) {
           // 异步任务模式 - 需要轮询状态
           console.log('检测到DashScope异步任务模式，开始轮询状态...');
           const taskId = data.taskId;

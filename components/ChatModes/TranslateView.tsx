@@ -185,6 +185,13 @@ ${data.translatedText}
     toneDisclosure.onClose();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleTranslate();
+    }
+  };
+
   const selectedLangLabel = languageOptions.find(lang => lang.key === selectedLanguage)?.label || languageOptions[0].label;
   const selectedToneLabel = toneOptions.find(tone => tone.key === selectedTone)?.label || toneOptions[0].label;
 
@@ -206,23 +213,26 @@ ${data.translatedText}
           <Icon as={FiGlobe} />
           <Text fontWeight="bold">{t('quickTranslate.title')}</Text>
         </HStack>
-        <IconButton 
-          aria-label={t('common.close')} 
-          icon={<FaTimes />} 
-          size="sm" 
-          variant="ghost" 
-          onClick={onClose} 
+        <IconButton
+          icon={<FaTimes />}
+          aria-label="关闭"
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
         />
       </HStack>
-      
-      {/* Textarea */}
-      <Textarea 
-        placeholder={t('quickTranslate.placeholder')} 
-        minH="120px" 
+
+      {/* 输入框 */}
+      <Textarea
         value={inputText}
         onChange={(e) => setInputText(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={t('quickTranslate.placeholder')}
+        rows={3}
+        resize="none"
         isDisabled={isLoading}
       />
+
       {/* 语气、语言 下拉选择器 + 发送按钮 水平对齐 */}
       <HStack spacing={3} mt={2} w="full" justify="space-between">
         <HStack spacing={3}>

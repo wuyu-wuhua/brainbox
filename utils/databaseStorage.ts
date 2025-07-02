@@ -1,5 +1,6 @@
 import { ChatHistory, Message } from '../types/chat';
 import { supabase } from '../lib/supabase';
+import { PostgrestError } from '@supabase/supabase-js';
 
 const isClient = typeof window !== 'undefined';
 
@@ -356,45 +357,42 @@ export const getCurrentUserId = async (): Promise<string | null> => {
 // 聊天历史记录相关函数
 // =============================================================================
 
-export const saveHistoryToDB = async (messages: Message[], model: string, type: 'chat' | 'draw' | 'read' | 'video' = 'chat'): Promise<string | null> => {
+export const saveHistoryToDB = async (
+  messages: Message[],
+  model: string,
+  type: 'chat' | 'draw' | 'read' | 'video' = 'chat'
+): Promise<string | null> => {
   try {
     const userId = await getCurrentUserId();
     if (!userId) {
-      console.log('用户未登录，无法保存到数据库');
+      console.log('用户未登录，不保存历史记录');
       return null;
     }
 
-    const title = messages[0]?.content?.slice(0, 30) + '...' || '新对话';
-
+    const now = new Date().toISOString();
+    
     const { data, error } = await supabase
       .from('chat_histories')
       .insert([
         {
           user_id: userId,
-          title,
-          model,
-          messages: JSON.stringify(messages),
-          timestamp: new Date().toISOString(),
-          type
+          content: JSON.stringify(messages),
+          model: model,
+          type: type,
+          created_at: now,
+          updated_at: now,
+          timestamp: now
         }
       ])
-      .select()
+      .select('id')
       .single();
 
     if (error) {
-      console.error('保存历史记录到数据库失败:', {
-        error,
-        errorMessage: error.message,
-        errorDetails: error.details,
-        errorHint: error.hint,
-        errorCode: error.code,
-        userId
-      });
+      console.error('保存历史记录失败:', error);
       return null;
     }
 
-    console.log('历史记录已保存到数据库:', data);
-    return data.id; // 返回数据库生成的UUID
+    return data.id;
   } catch (error) {
     console.error('保存历史记录异常:', error);
     return null;
@@ -482,17 +480,28 @@ export const deleteHistoryFromDB = async (id: string): Promise<boolean> => {
       return false;
     }
 
-    const { error } = await supabase
-      .from('chat_histories')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
-    if (error) {
-      console.error('删除历史记录失败:', error);
-      return false;
+    let error: PostgrestError | null = null;
+
+    if (isUUID) {
+      // 新格式：直接按 UUID 删除
+      ({ error } = await supabase
+        .from('chat_histories')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId));
+
+      if (error) {
+        console.error('删除历史记录失败:', error);
+        return false;
+      }
+    } else {
+      // 旧格式：本地记录，数据库中不存在，直接视为删除成功
+      console.info('本地旧格式记录，跳过数据库删除:', id);
     }
 
+    // 如果走到这里说明删除（或跳过）成功
     console.log('历史记录已删除:', id);
     return true;
   } catch (error) {
@@ -539,15 +548,37 @@ export const deleteMultipleHistoriesFromDB = async (ids: string[]): Promise<bool
       return false;
     }
 
-    const { error } = await supabase
-      .from('chat_histories')
-      .delete()
-      .eq('user_id', userId)
-      .in('id', ids);
+    const uuidIds: string[] = [];
+    const isoTimes: string[] = [];
+    ids.forEach((id) => {
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+      if (isUUID) {
+        uuidIds.push(id);
+      } else {
+        const timePart = id.split('_')[0];
+        const ts = Number(timePart);
+        if (!isNaN(ts)) {
+          isoTimes.push(new Date(ts).toISOString());
+        }
+      }
+    });
 
-    if (error) {
-      console.error('批量删除失败:', error);
-      return false;
+    let error: PostgrestError | null = null;
+
+    if (uuidIds.length > 0) {
+      ({ error } = await supabase
+        .from('chat_histories')
+        .delete()
+        .in('id', uuidIds)
+        .eq('user_id', userId));
+      if (error) {
+        console.error('批量删除 UUID 记录失败:', error);
+        return false;
+      }
+    }
+
+    if (isoTimes.length > 0) {
+      console.info('批量删除本地旧格式记录，跳过数据库删除:', isoTimes.length);
     }
 
     console.log('批量删除成功:', ids);

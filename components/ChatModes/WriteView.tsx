@@ -178,6 +178,13 @@ const WriteView: React.FC<WriteViewProps> = ({
     languageDisclosure.onClose();
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleWrite();
+    }
+  };
+
   const selectedToneLabel = toneOptions.find(tone => tone.key === selectedTone)?.label || toneOptions[0].label;
   const selectedLengthLabel = lengthOptions.find(length => length.key === selectedLength)?.label || lengthOptions[0].label;
   const selectedLanguageLabel = languageOptions.find(lang => lang.key === selectedLanguage)?.label || languageOptions[0].label;
@@ -200,12 +207,12 @@ const WriteView: React.FC<WriteViewProps> = ({
           <Icon as={FiEdit} />
           <Text fontWeight="bold">{t('write.title')}</Text>
         </HStack>
-        <IconButton 
-          aria-label={t('common.close')} 
-          icon={<FaTimes />} 
-          size="sm" 
-          variant="ghost" 
-          onClick={onClose} 
+        <IconButton
+          icon={<FaTimes />}
+          aria-label="关闭"
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
         />
       </HStack>
       
@@ -231,6 +238,7 @@ const WriteView: React.FC<WriteViewProps> = ({
         minH="120px" 
         value={inputText}
         onChange={(e) => setInputText(e.target.value)}
+        onKeyDown={handleKeyDown}
         isDisabled={isLoading}
       />
       {/* 语气、长度、语言 下拉选择器 + 发送按钮 水平对齐 */}

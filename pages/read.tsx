@@ -263,6 +263,26 @@ export default function Read() {
           const extractedText = await extractTextFromFile(file);
           const cleanContent = extractedText.trim();
           
+          // 检查文档长度（假设平均每页2000字符）
+          const estimatedPages = Math.ceil(cleanContent.length / 2000);
+          if (estimatedPages > 10) {
+            toast({
+              title: t('read.onlySupport10Pages'),
+              status: 'warning',
+              duration: 3000,
+            });
+            // 清理状态
+            setSelectedFile(null);
+            setDocumentContent('');
+            setPreviewText('');
+            setCurrentDocument(null);
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
+            setIsFileProcessing(false);
+            return;
+          }
+          
           // 重置会话状态，创建新的历史记录
           setChatMessages([]);
           setAnalysisStarted(false);
@@ -284,12 +304,6 @@ export default function Read() {
           };
           
           setCurrentDocument(documentData);
-          
-          // 在上传/解析文档后，判断页数，如果超过10页则弹窗提示并 return，不进行后续处理
-          if (cleanContent.length > 10 * 1024) {
-            toast({ title: '文档超过10页，无法读取', status: 'warning' });
-            return;
-          }
           
           toast({
             title: '文档解析成功',
@@ -349,7 +363,6 @@ export default function Read() {
     if (!checkLoginStatus()) return;
     
     setIsFileProcessing(true);
-    setActiveInputType('url');
     
     try {
       const response = await fetch('/api/extract-web', {
@@ -370,21 +383,35 @@ export default function Read() {
         throw new Error('无法提取网页内容');
       }
 
+      const cleanContent = data.text.trim();
+      
+      // 检查文档长度（假设平均每页2000字符）
+      const estimatedPages = Math.ceil(cleanContent.length / 2000);
+      if (estimatedPages > 10) {
+        toast({
+          title: t('read.onlySupport10Pages'),
+          status: 'warning',
+          duration: 3000,
+        });
+        setUrlInput('');
+        return;
+      }
+
       // 重置会话状态，创建新的历史记录
       setChatMessages([]);
       setAnalysisStarted(false);
       setCurrentSessionId('');
       currentSessionIdRef.current = '';
 
-      setDocumentContent(data.text);
-      setPreviewText(data.text);
+      setDocumentContent(cleanContent);
+      setPreviewText(cleanContent);
       
       const documentData: DocumentData = {
         id: Date.now().toString(),
         title: data.title || `网页内容 - ${new URL(urlInput).hostname}`,
-        content: data.text,
+        content: cleanContent,
         uploadTime: new Date(),
-        wordCount: data.text.length,
+        wordCount: cleanContent.length,
         type: 'url'
       };
       
@@ -392,15 +419,9 @@ export default function Read() {
       setUrlInput('');
       setActiveInputType('file');
       
-      // 在上传/解析文档后，判断页数，如果超过10页则弹窗提示并 return，不进行后续处理
-      if (data.text.length > 10 * 1024) {
-        toast({ title: '文档超过10页，无法读取', status: 'warning' });
-        return;
-      }
-      
       toast({
         title: '网页内容获取成功',
-        description: `已成功提取网页内容，共 ${data.text.length} 个字符`,
+        description: `已成功提取网页内容，共 ${cleanContent.length} 个字符`,
         status: 'success',
         duration: 3000,
       });
@@ -426,6 +447,18 @@ export default function Read() {
     try {
       const cleanContent = textInput.trim();
       
+      // 检查文档长度（假设平均每页2000字符）
+      const estimatedPages = Math.ceil(cleanContent.length / 2000);
+      if (estimatedPages > 10) {
+        toast({
+          title: t('read.onlySupport10Pages'),
+          status: 'warning',
+          duration: 3000,
+        });
+        setTextInput('');
+        return;
+      }
+      
       // 重置会话状态，创建新的历史记录
       setChatMessages([]);
       setAnalysisStarted(false);
@@ -448,12 +481,6 @@ export default function Read() {
       setCurrentDocument(documentData);
       setTextInput('');
       setActiveInputType('file');
-      
-      // 在上传/解析文档后，判断页数，如果超过10页则弹窗提示并 return，不进行后续处理
-      if (cleanContent.length > 10 * 1024) {
-        toast({ title: '文档超过10页，无法读取', status: 'warning' });
-        return;
-      }
       
       toast({
         title: '文本处理成功',
@@ -496,6 +523,27 @@ export default function Read() {
       });
       return;
     }
+
+    // 再次检查文档长度（假设平均每页2000字符）
+    const estimatedPages = Math.ceil(documentContent.trim().length / 2000);
+    if (estimatedPages > 10) {
+      toast({
+        title: t('read.onlySupport10Pages'),
+        status: 'warning',
+        duration: 3000,
+      });
+      // 清理状态
+      setSelectedFile(null);
+      setDocumentContent('');
+      setPreviewText('');
+      setCurrentDocument(null);
+      setChatMessages([]);
+      setAnalysisStarted(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      return;
+    }
     
     // 保存文档数据到本地存储和历史记录
     if (currentDocument) {
@@ -516,11 +564,11 @@ export default function Read() {
     
     setAnalysisStarted(true);
     
-    // 添加欢迎消息
+    // 添加欢迎消息，使用文档标题
     const welcomeMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'assistant',
-      content: `您好！我已经成功读取了您的文档内容（共 ${documentContent.length} 个字符）。
+      content: `文件上传：${currentDocument?.title || '未知文档'}（共 ${documentContent.length} 个字符）。
 
 文档内容已经完全加载，我可以基于这些内容为您提供以下服务：
 

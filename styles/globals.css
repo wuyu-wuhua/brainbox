@@ -22,7 +22,7 @@ body, html {
 /* 自定义滚动条样式 */
 ::-webkit-scrollbar {
   width: 6px;
-  height: 6px;
+  height: 0; /* 隐藏横向滚动条 */
 }
 
 ::-webkit-scrollbar-track {
@@ -30,21 +30,21 @@ body, html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.1);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 /* 深色模式下的滚动条 */
 [data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 [data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 @media (max-width: 768px) {

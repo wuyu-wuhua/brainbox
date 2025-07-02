@@ -127,25 +127,87 @@ export const saveHistory = (messages: Message[], model: string, type: 'chat' | '
     return;
   }
 
+  // 过滤掉空消息
+  const validMessages = messages.filter(msg => 
+    msg.content && 
+    typeof msg.content === 'string' && 
+    msg.content.trim().length > 0
+  );
+
+  if (validMessages.length === 0) {
+    console.log('没有有效的消息内容，跳过保存');
+    return;
+  }
+
+  // 生成更唯一的ID（时间戳 + 随机数）
+  const uniqueId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
   const history: ChatHistory = {
-    id: Date.now().toString(),
-    title: messages[0].content.slice(0, 30) + '...',
+    id: uniqueId,
+    title: validMessages[0].content.slice(0, 30) + '...',
     model,
-    messages,
+    messages: validMessages,
     timestamp: Date.now(),
     type,
   };
 
-  // 立即保存到localStorage
+  // 检查是否已存在相同内容的历史记录
   const histories = getHistories();
+  const now = Date.now();
+  const existingSimilarHistory = histories.find(h => {
+    // 检查类型和模型是否相同
+    if (h.type !== type || h.model !== model) {
+      return false;
+    }
+    
+    // 检查消息数量是否相同
+    if (h.messages.length !== validMessages.length) {
+      return false;
+    }
+    
+    // 检查每条消息的内容和发送者是否完全相同
+    const isContentSame = h.messages.every((msg, index) => 
+      msg.content === validMessages[index].content &&
+      msg.isUser === validMessages[index].isUser
+    );
+    
+    if (!isContentSame) {
+      return false;
+    }
+    
+    // 如果内容完全相同，额外检查时间戳（5分钟内的重复记录视为同一个）
+    const timeDiff = now - h.timestamp;
+    return timeDiff < 5 * 60 * 1000; // 5分钟
+  });
+
+  if (existingSimilarHistory) {
+    console.log('发现完全相同的历史记录（内容和时间都匹配），跳过保存');
+    return;
+  }
+
+  // 立即保存到localStorage
   histories.unshift(history);
   const storageKey = getUserStorageKey(userId, 'chat_histories');
   localStorage.setItem(storageKey, JSON.stringify(histories));
   historyEventBus.emit();
 
-  // 后台尝试保存到数据库
+  // 后台尝试保存到数据库，如果成功会返回数据库ID
   tryDatabaseOperation(
-    () => saveHistoryToDB(messages, model, type),
+    async () => {
+      const dbId = await saveHistoryToDB(validMessages, model, type);
+      if (dbId && dbId !== uniqueId) {
+        // 如果数据库返回了不同的ID，更新本地记录
+        const histories = getHistories();
+        const index = histories.findIndex(h => h.id === uniqueId);
+        if (index !== -1) {
+          histories[index].id = dbId;
+          const storageKey = getUserStorageKey(currentUserId, 'chat_histories');
+          localStorage.setItem(storageKey, JSON.stringify(histories));
+          console.log(`历史记录ID已更新: ${uniqueId} -> ${dbId}`);
+        }
+      }
+      return dbId;
+    },
     'saveHistory'
   );
 
@@ -163,26 +225,86 @@ export const saveSessionHistory = (messages: Message[], model: string, type: 'ch
     return '';
   }
 
-  const sessionId = Date.now().toString();
+  // 过滤掉空消息
+  const validMessages = messages.filter(msg => 
+    msg.content && 
+    typeof msg.content === 'string' && 
+    msg.content.trim().length > 0
+  );
+
+  if (validMessages.length === 0) {
+    console.log('没有有效的消息内容，跳过保存');
+    return '';
+  }
+
+  // 生成更唯一的ID（时间戳 + 随机数）
+  const sessionId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const history: ChatHistory = {
     id: sessionId,
-    title: messages[0].content.slice(0, 30) + '...',
+    title: validMessages[0].content.slice(0, 30) + '...',
     model,
-    messages,
+    messages: validMessages,
     timestamp: Date.now(),
     type,
   };
 
-  // 立即保存到localStorage
+  // 检查是否已存在相同内容的历史记录
   const histories = getHistories();
+  const now = Date.now();
+  const existingSimilarHistory = histories.find(h => {
+    // 检查类型和模型是否相同
+    if (h.type !== type || h.model !== model) {
+      return false;
+    }
+    
+    // 检查消息数量是否相同
+    if (h.messages.length !== validMessages.length) {
+      return false;
+    }
+    
+    // 检查每条消息的内容和发送者是否完全相同
+    const isContentSame = h.messages.every((msg, index) => 
+      msg.content === validMessages[index].content &&
+      msg.isUser === validMessages[index].isUser
+    );
+    
+    if (!isContentSame) {
+      return false;
+    }
+    
+    // 如果内容完全相同，额外检查时间戳（5分钟内的重复记录视为同一个）
+    const timeDiff = now - h.timestamp;
+    return timeDiff < 5 * 60 * 1000; // 5分钟
+  });
+
+  if (existingSimilarHistory) {
+    console.log('发现完全相同的历史记录（内容和时间都匹配），返回已存在的会话ID');
+    return existingSimilarHistory.id;
+  }
+
+  // 立即保存到localStorage
   histories.unshift(history);
   const storageKey = getUserStorageKey(userId, 'chat_histories');
   localStorage.setItem(storageKey, JSON.stringify(histories));
   historyEventBus.emit();
-  
-  // 后台尝试保存到数据库
+
+  // 后台尝试保存到数据库，如果成功会返回数据库ID
   tryDatabaseOperation(
-    () => saveHistoryToDB(messages, model, type),
+    async () => {
+      const dbId = await saveHistoryToDB(validMessages, model, type);
+      if (dbId && dbId !== sessionId) {
+        // 如果数据库返回了不同的ID，更新本地记录
+        const histories = getHistories();
+        const index = histories.findIndex(h => h.id === sessionId);
+        if (index !== -1) {
+          histories[index].id = dbId;
+          const storageKey = getUserStorageKey(currentUserId, 'chat_histories');
+          localStorage.setItem(storageKey, JSON.stringify(histories));
+          console.log(`会话历史记录ID已更新: ${sessionId} -> ${dbId}`);
+        }
+      }
+      return dbId;
+    },
     'saveSessionHistory'
   );
 
@@ -218,7 +340,18 @@ export const updateSessionHistory = (sessionId: string, messages: Message[], mod
   
   if (sessionIndex !== -1) {
     const originalTitle = histories[sessionIndex].title;
+    const originalType = histories[sessionIndex].type;
     console.log('原标题:', originalTitle);
+    
+    // 检查是否有实质性更新
+    const currentHistory = histories[sessionIndex];
+    if (
+      currentHistory.messages.length === messages.length &&
+      JSON.stringify(currentHistory.messages) === JSON.stringify(messages)
+    ) {
+      console.log('消息内容未变化，跳过更新');
+      return;
+    }
     
     histories[sessionIndex] = {
       ...histories[sessionIndex],
@@ -226,6 +359,7 @@ export const updateSessionHistory = (sessionId: string, messages: Message[], mod
       model,
       timestamp: Date.now(),
       title: originalTitle, // 保持原标题不变
+      type: originalType, // 保持原类型不变
     };
     
     console.log('更新会话成功');
@@ -287,26 +421,45 @@ export const getHistoriesAsync = async (): Promise<ChatHistory[]> => {
       return localHistories;
     }
 
-    // 合并本地和数据库记录，以ID为唯一标识
+    // 合并本地和数据库记录，以ID为唯一标识，避免重复
     const mergedHistories = [...localHistories];
+    const localIds = new Set(localHistories.map(h => h.id));
     
     dbHistories.forEach(dbHistory => {
-      const existingIndex = mergedHistories.findIndex(h => h.id === dbHistory.id);
-      if (existingIndex === -1) {
+      if (!localIds.has(dbHistory.id)) {
         // 数据库中有但本地没有的记录，添加到合并列表
         mergedHistories.push(dbHistory);
       } else {
-        // 如果数据库记录比本地更新，则使用数据库记录
-        const localTimestamp = new Date(mergedHistories[existingIndex].timestamp).getTime();
-        const dbTimestamp = new Date(dbHistory.timestamp).getTime();
-        if (dbTimestamp > localTimestamp) {
-          mergedHistories[existingIndex] = dbHistory;
+        // 如果本地已有相同ID的记录，检查是否需要更新
+        const existingIndex = mergedHistories.findIndex(h => h.id === dbHistory.id);
+        if (existingIndex !== -1) {
+          const localTimestamp = new Date(mergedHistories[existingIndex].timestamp).getTime();
+          const dbTimestamp = new Date(dbHistory.timestamp).getTime();
+          if (dbTimestamp > localTimestamp) {
+            mergedHistories[existingIndex] = dbHistory;
+          }
         }
       }
     });
 
+    // 额外的内容去重检查（防止相同内容但不同ID的重复记录）
+    const finalHistories: ChatHistory[] = [];
+    const contentSet = new Set<string>();
+    
+    mergedHistories.forEach(history => {
+      // 创建内容签名：类型+模型+第一条消息内容+消息数量
+      const contentSignature = `${history.type}_${history.model}_${history.messages[0]?.content}_${history.messages.length}`;
+      
+      if (!contentSet.has(contentSignature)) {
+        contentSet.add(contentSignature);
+        finalHistories.push(history);
+      } else {
+        console.log(`检测到重复内容的历史记录，已跳过: ${history.id}`);
+      }
+    });
+
     // 按时间戳排序，最新的在前面
-    mergedHistories.sort((a, b) => {
+    finalHistories.sort((a, b) => {
       const timeA = new Date(a.timestamp).getTime();
       const timeB = new Date(b.timestamp).getTime();
       return timeB - timeA;
@@ -314,10 +467,10 @@ export const getHistoriesAsync = async (): Promise<ChatHistory[]> => {
 
     // 更新本地存储
     const storageKey = getUserStorageKey(userId, 'chat_histories');
-    localStorage.setItem(storageKey, JSON.stringify(mergedHistories));
+    localStorage.setItem(storageKey, JSON.stringify(finalHistories));
     
-    console.log(`合并后共有 ${mergedHistories.length} 条历史记录`);
-    return mergedHistories;
+    console.log(`合并后共有 ${finalHistories.length} 条历史记录`);
+    return finalHistories;
   } catch (error) {
     console.error('获取历史记录失败:', error);
     return getHistories(); // 失败时返回本地记录
@@ -349,24 +502,40 @@ export function addHistory(history: ChatHistory) {
   }
 }
 
-export function deleteHistory(id: string) {
+export async function deleteHistory(id: string) {
+  if (!isClient) return false;
+
   const userId = getCurrentUserId();
-  if (!userId) return;
+  if (!userId) {
+    console.log('用户未登录，不执行删除操作');
+    return false;
+  }
 
-  // 立即从localStorage删除
-  const histories = getHistories().filter(h => h.id !== id);
-  const storageKey = getUserStorageKey(userId, 'chat_histories');
-  localStorage.setItem(storageKey, JSON.stringify(histories));
-  historyEventBus.emit();
+  try {
+    // 先尝试从数据库删除
+    const dbDeleteSuccess = await deleteHistoryFromDB(id);
+    
+    if (!dbDeleteSuccess) {
+      console.error('从数据库删除历史记录失败');
+      return false;
+    }
 
-  // 后台尝试从数据库删除
-  tryDatabaseOperation(
-    () => deleteHistoryFromDB(id),
-    'deleteHistory'
-  );
+    // 数据库删除成功后再删除本地存储
+    const histories = getHistories();
+    const updatedHistories = histories.filter(h => h.id !== id);
+    const storageKey = getUserStorageKey(userId, 'chat_histories');
+    localStorage.setItem(storageKey, JSON.stringify(updatedHistories));
+    
+    historyEventBus.emit();
+    
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('history-updated'));
+    }
 
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event('history-updated'));
+    return true;
+  } catch (error) {
+    console.error('删除历史记录失败:', error);
+    return false;
   }
 }
 
@@ -423,46 +592,64 @@ export function renameHistory(id: string, newTitle: string) {
   }
 }
 
-export function deleteMultipleHistories(ids: string[]) {
+export async function deleteMultipleHistories(ids: string[]) {
   const userId = getCurrentUserId();
-  if (!userId) return;
+  if (!userId) return false;
 
-  // 立即从localStorage批量删除
-  const histories = getHistories().filter(h => !ids.includes(h.id));
-  const storageKey = getUserStorageKey(userId, 'chat_histories');
-  localStorage.setItem(storageKey, JSON.stringify(histories));
-  historyEventBus.emit();
+  try {
+    // 先从数据库批量删除
+    const success = await deleteMultipleHistoriesFromDB(ids);
+    
+    if (!success) {
+      console.error('从数据库批量删除历史记录失败');
+      return false;
+    }
 
-  // 后台尝试从数据库批量删除
-  tryDatabaseOperation(
-    () => deleteMultipleHistoriesFromDB(ids),
-    'deleteMultipleHistories'
-  );
+    // 数据库删除成功后再从本地删除
+    const histories = getHistories().filter(h => !ids.includes(h.id));
+    const storageKey = getUserStorageKey(userId, 'chat_histories');
+    localStorage.setItem(storageKey, JSON.stringify(histories));
+    historyEventBus.emit();
 
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event('history-updated'));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('history-updated'));
+    }
+
+    return true;
+  } catch (error) {
+    console.error('批量删除历史记录时出错:', error);
+    return false;
   }
 }
 
-export function clearHistories() {
-  if (!isClient) return;
+export async function clearHistories() {
+  if (!isClient) return false;
   
   const userId = getCurrentUserId();
-  if (!userId) return;
+  if (!userId) return false;
 
-  // 立即清空localStorage
-  const storageKey = getUserStorageKey(userId, 'chat_histories');
-  localStorage.removeItem(storageKey);
-  historyEventBus.emit();
+  try {
+    // 先从数据库清除
+    const success = await clearAllHistoriesFromDB();
+    
+    if (!success) {
+      console.error('从数据库清除所有历史记录失败');
+      return false;
+    }
 
-  // 后台尝试清空数据库
-  tryDatabaseOperation(
-    () => clearAllHistoriesFromDB(),
-    'clearHistories'
-  );
+    // 数据库清除成功后再清除本地存储
+    const storageKey = getUserStorageKey(userId, 'chat_histories');
+    localStorage.removeItem(storageKey);
+    historyEventBus.emit();
 
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event('history-updated'));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('history-updated'));
+    }
+
+    return true;
+  } catch (error) {
+    console.error('清除历史记录时出错:', error);
+    return false;
   }
 }
 
