@@ -188,7 +188,7 @@ export default function Video() {
   const { t } = useLanguage();
   const { addActivity, addFavorite, removeFavorite, favorites, userStats, getUserQuota, checkFreeQuotaExceeded, getRemainingFreeQuota } = useUserActivity();
   const { user } = useAuth();
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const { isOpen: isLoginOpen, onOpen: onLoginOpen, onClose: onLoginClose } = useDisclosure();
   const { isOpen, onOpen, onClose } = useDisclosure();
 
   // 视频样式选项 - 调整为6个偶数风格
@@ -411,34 +411,29 @@ export default function Video() {
   };
 
   const handleGenerate = async () => {
-    if (!prompt.trim()) {
-      toast({
-        title: t('video.pleaseInputDescription'),
-        description: t('video.pleaseInputDescriptionDesc'),
-        status: 'warning',
-        duration: 3000,
-      });
-      return;
-    }
-
     if (!user) {
-      setIsLoginOpen(true);
-      toast({
-        title: t('video.pleaseLogin'),
-        description: t('video.pleaseLoginDesc'),
-        status: 'warning',
-        duration: 3000,
-      });
+      onLoginOpen();
       return;
     }
 
     // 检查免费额度
     if (checkFreeQuotaExceeded('video')) {
       toast({
-        title: '已达免费视频上限',
-        description: `您已用完 ${userStats.free_videos_limit} 次免费视频生成，请开通会员享受更多权益`,
+        title: t('common.freeQuotaExceeded'),
+        description: t('common.upgradeToPro'),
         status: 'warning',
-        duration: 4000,
+        duration: 5000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!prompt.trim()) {
+      toast({
+        title: t('video.pleaseInputDescription'),
+        description: t('video.pleaseInputDescriptionDesc'),
+        status: 'warning',
+        duration: 3000,
       });
       return;
     }
@@ -745,7 +740,7 @@ export default function Video() {
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     // 检查用户是否已登录
     if (!user) {
-      setIsLoginOpen(true);
+      onLoginOpen();
       toast({
         title: '请先登录',
         description: '登录后即可使用AI视频功能',
@@ -1226,7 +1221,7 @@ export default function Video() {
     const handleGen3ImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
       // 检查用户是否已登录
       if (!user) {
-        setIsLoginOpen(true);
+        onLoginOpen();
         toast({
           title: '请先登录',
           description: '登录后即可使用AI视频功能',
@@ -1288,7 +1283,7 @@ export default function Video() {
       if (!gen3GeneratedVideo) return;
       
       if (!user) {
-        setIsLoginOpen(true);
+        onLoginOpen();
         return;
       }
 
@@ -1432,6 +1427,23 @@ export default function Video() {
     };
 
     const handleGen3Generate = async () => {
+      if (!user) {
+        onLoginOpen();
+        return;
+      }
+
+      // 检查免费额度
+      if (checkFreeQuotaExceeded('video')) {
+        toast({
+          title: t('common.freeQuotaExceeded'),
+          description: t('common.upgradeToPro'),
+          status: 'warning',
+          duration: 5000,
+          isClosable: true,
+        });
+        return;
+      }
+
       // 确保页面处于DashScope模式
       if (modelType !== 'gen3') {
         setModelType('gen3');
@@ -1443,11 +1455,6 @@ export default function Video() {
           status: 'warning',
           duration: 2000,
         });
-        return;
-      }
-
-      if (!user) {
-        setIsLoginOpen(true);
         return;
       }
 
@@ -2038,7 +2045,7 @@ export default function Video() {
                                     onClick={async () => {
                                       // 收藏当前视频
                                       if (!user) {
-                                        setIsLoginOpen(true);
+                                        onLoginOpen();
                                         return;
                                       }
                                       
@@ -2188,7 +2195,7 @@ export default function Video() {
                         onChange={(e) => setGen3Prompt(e.target.value)}
                         onFocus={() => {
                           if (!user) {
-                            setIsLoginOpen(true);
+                            onLoginOpen();
                             toast({
                               title: '请先登录',
                               description: '登录后即可使用AI视频功能',
@@ -2484,7 +2491,7 @@ export default function Video() {
                                 onChange={e => setPrompt(e.target.value)}
                                 onFocus={() => {
                                   if (!user) {
-                                    setIsLoginOpen(true);
+                                    onLoginOpen();
                                     toast({
                                       title: '请先登录',
                                       description: '登录后即可使用AI视频功能',
@@ -2766,7 +2773,7 @@ export default function Video() {
                               onChange={(e) => setPrompt(e.target.value)}
                               onFocus={() => {
                                 if (!user) {
-                                  setIsLoginOpen(true);
+                                  onLoginOpen();
                                   toast({
                                     title: '请先登录',
                                     description: '登录后即可使用AI视频功能',

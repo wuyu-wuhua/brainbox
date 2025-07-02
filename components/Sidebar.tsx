@@ -178,10 +178,13 @@ const Sidebar: React.FC<SidebarProps> = ({
       
       // 先从本地获取历史记录（立即响应）
       const localHistories = getHistories();
-      setHistories(localHistories);
+      if (localHistories.length > 0) {
+        setHistories(localHistories);
+        return; // 如果本地有数据，就不需要从数据库加载
+      }
       
       try {
-        // 然后异步从数据库获取最新数据
+        // 只有在本地没有数据时才从数据库获取
         const { getHistoriesAsync } = await import('../utils/storage');
         const dbHistories = await getHistoriesAsync();
         if (dbHistories.length > 0) {
@@ -201,17 +204,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       setHistories(updatedHistories);
     });
 
-    // 监听来自其他页面的历史记录更新事件
-    const handleHistoryUpdated = () => {
-      const updatedHistories = getHistories();
-      setHistories(updatedHistories);
-    };
-
-    window.addEventListener('history-updated', handleHistoryUpdated);
-
     return () => {
       unsubscribe();
-      window.removeEventListener('history-updated', handleHistoryUpdated);
     };
   }, [user]);
 

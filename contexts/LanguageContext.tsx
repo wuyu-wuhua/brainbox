@@ -1234,8 +1234,9 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
   const [language, setLanguageState] = useState<Language>('en');
 
   useEffect(() => {
-    const savedLanguage = localStorage.getItem('language') as Language;
-    if (savedLanguage && (savedLanguage === 'zh' || savedLanguage === 'en')) {
+    // 从localStorage获取语言设置
+    const savedLanguage = localStorage.getItem('language');
+    if (savedLanguage === 'zh' || savedLanguage === 'en') {
       setLanguageState(savedLanguage);
     }
   }, []);
@@ -1243,19 +1244,18 @@ export const LanguageProvider: React.FC<LanguageProviderProps> = ({ children }) 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
     localStorage.setItem('language', lang);
-    document.title = lang === 'zh' ? 'BrainBox - AI对话助手' : 'BrainBox - AI Chat Assistant';
   };
 
   const t = (key: string, params?: Record<string, string>) => {
-    let text = translations[language][key as keyof typeof translations[typeof language]] || key;
-    
-    // 替换参数
+    const currentTranslations = translations[language] || translations.en;
+    let text = currentTranslations[key] || key;
+
     if (params) {
       Object.entries(params).forEach(([param, value]) => {
         text = text.replace(`{${param}}`, value);
       });
     }
-    
+
     return text;
   };
 
