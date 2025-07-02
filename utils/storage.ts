@@ -20,17 +20,31 @@ export const setCurrentUserId = (userId: string | null) => {
   console.log('设置当前用户ID:', userId);
 };
 
-// 添加事件总线
-export const historyEventBus = {
-  listeners: new Set<() => void>(),
-  subscribe(listener: () => void) {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  },
-  emit() {
-    this.listeners.forEach(listener => listener());
+// 创建一个简单的事件总线
+class HistoryEventBus {
+  private subscribers: (() => void)[] = [];
+  private lastEmitTime: number = 0;
+  private readonly MIN_INTERVAL = 1000; // 最小触发间隔为1秒
+
+  subscribe(callback: () => void) {
+    this.subscribers.push(callback);
+    return () => {
+      this.subscribers = this.subscribers.filter(cb => cb !== callback);
+    };
   }
-};
+
+  emit() {
+    const now = Date.now();
+    // 如果距离上次触发时间不足1秒，则不触发
+    if (now - this.lastEmitTime < this.MIN_INTERVAL) {
+      return;
+    }
+    this.lastEmitTime = now;
+    this.subscribers.forEach(callback => callback());
+  }
+}
+
+export const historyEventBus = new HistoryEventBus();
 
 // 获取当前用户ID（优先使用全局变量，备用localStorage）
 const getCurrentUserId = (): string | null => {

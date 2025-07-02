@@ -421,38 +421,6 @@ export default function History() {
   const lastUpdateRef = useRef<number>(0);
   const updateIntervalRef = useRef<number>(30000); // 30秒更新一次
 
-  // 获取历史记录的函数
-  const loadHistories = async (forceSync = false) => {
-    if (!user) {
-      setHistories([]);
-      setLoading(false);
-      return;
-    }
-
-    const now = Date.now();
-    // 如果不是强制同步且距离上次更新时间不足30秒，则不更新
-    if (!forceSync && now - lastUpdateRef.current < updateIntervalRef.current) {
-      return;
-    }
-    
-    // 立即从本地获取历史记录并显示
-    const localHistories = getHistories();
-    setHistories(localHistories);
-    setLoading(false);
-    lastUpdateRef.current = now;
-    
-    // 在后台异步更新数据库数据
-    try {
-      const dbHistories = await getHistoriesAsync();
-      if (dbHistories && dbHistories.length > 0 && JSON.stringify(dbHistories) !== JSON.stringify(localHistories)) {
-        setHistories(dbHistories);
-        lastUpdateRef.current = now;
-      }
-    } catch (error) {
-      console.error('后台同步历史记录失败:', error);
-    }
-  };
-
   useEffect(() => {
     // 如果用户未登录，直接设置空状态
     if (!user) {
@@ -461,30 +429,36 @@ export default function History() {
       return;
     }
 
-    // 如果用户已登录，立即加载本地历史记录
-    const localHistories = getHistories();
-    setHistories(localHistories);
-    setLoading(false);
+    // 首次加载时获取历史记录
+    const loadHistories = async () => {
+      // 立即从本地获取历史记录并显示
+      const localHistories = getHistories();
+      setHistories(localHistories);
+      setLoading(false);
+      
+      // 在后台异步更新数据库数据
+      try {
+        const dbHistories = await getHistoriesAsync();
+        if (dbHistories && dbHistories.length > 0 && JSON.stringify(dbHistories) !== JSON.stringify(localHistories)) {
+          setHistories(dbHistories);
+        }
+      } catch (error) {
+        console.error('后台同步历史记录失败:', error);
+      }
+    };
 
-    // 仅在首次加载时异步同步数据库数据
-    loadHistories(false);
+    loadHistories();
 
     // 监听历史记录更新事件
     const unsubscribe = historyEventBus.subscribe(() => {
-      const now = Date.now();
-      // 如果距离上次更新时间不足30秒，则不更新
-      if (now - lastUpdateRef.current < updateIntervalRef.current) {
-        return;
-      }
       const updatedHistories = getHistories();
       setHistories(updatedHistories);
-      lastUpdateRef.current = now;
     });
 
     return () => {
       unsubscribe();
     };
-  }, [user]);
+  }, [user]); // 只在用户状态改变时重新加载
 
   const handleClearAll = () => {
     clearHistories();

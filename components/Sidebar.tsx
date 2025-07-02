@@ -179,24 +179,18 @@ const Sidebar: React.FC<SidebarProps> = ({
         return;
       }
 
-      const now = Date.now();
-      // 如果距离上次更新时间不足30秒，则不更新
-      if (now - lastUpdateRef.current < updateIntervalRef.current) {
-        return;
-      }
-      
-      // 先从本地获取历史记录（立即响应）
+      // 只在以下情况更新历史记录：
+      // 1. 首次加载
+      // 2. 用户状态改变
+      // 3. 收到历史记录更新事件
       const localHistories = getHistories();
       setHistories(localHistories);
-      lastUpdateRef.current = now;
       
       try {
-        // 在后台异步更新数据库数据
         const { getHistoriesAsync } = await import('../utils/storage');
         const dbHistories = await getHistoriesAsync();
         if (dbHistories.length > 0 && JSON.stringify(dbHistories) !== JSON.stringify(localHistories)) {
           setHistories(dbHistories);
-          lastUpdateRef.current = now;
         }
       } catch (error) {
         console.error('加载历史记录失败:', error);
@@ -208,20 +202,14 @@ const Sidebar: React.FC<SidebarProps> = ({
     // 监听历史记录更新事件
     const { historyEventBus } = require('../utils/storage');
     const unsubscribe = historyEventBus.subscribe(() => {
-      const now = Date.now();
-      // 如果距离上次更新时间不足30秒，则不更新
-      if (now - lastUpdateRef.current < updateIntervalRef.current) {
-        return;
-      }
       const updatedHistories = getHistories();
       setHistories(updatedHistories);
-      lastUpdateRef.current = now;
     });
 
     return () => {
       unsubscribe();
     };
-  }, [user]);
+  }, [user]); // 只在用户状态改变时重新加载
 
   const handleClearHistory = () => {
     onClearHistory();
