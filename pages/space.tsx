@@ -44,7 +44,7 @@ import {
 import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import MobileNav from '../components/MobileNav';
-import { FiMessageSquare, FiImage, FiBook, FiStar, FiClock, FiVideo, FiTrash2, FiCheck, FiX } from 'react-icons/fi';
+import { FiMessageSquare, FiImage, FiBook, FiStar, FiClock, FiVideo, FiTrash2, FiCheck, FiX, FiRefreshCw } from 'react-icons/fi';
 import { FaTrash, FaCheck } from 'react-icons/fa';
 import { MdSelectAll, MdClear } from 'react-icons/md';
 import { useLanguage } from '../contexts/LanguageContext';
@@ -58,12 +58,13 @@ const SpacePage = () => {
   const borderColor = useColorModeValue('gray.200', 'gray.700');
   const { t } = useLanguage();
   const { user, loading: authLoading } = useAuth();
-  const { userStats, recentActivities, favorites, removeFavorite } = useUserActivity();
+  const { userStats, recentActivities, favorites, removeFavorite, refreshHistories, loading: userDataLoading } = useUserActivity();
   const router = useRouter();
   const toast = useToast();
   const [isClient, setIsClient] = useState(false);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [selectedFavorite, setSelectedFavorite] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // 批量删除收藏相关状态
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -78,6 +79,72 @@ const SpacePage = () => {
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  // 手动刷新数据
+  const handleRefreshData = async () => {
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
+    try {
+      await refreshHistories(); // 这个函数会重新从数据库加载所有用户数据
+      toast({
+        title: '数据刷新成功',
+        description: '已从数据库同步最新数据',
+        status: 'success',
+        duration: 2000,
+      });
+    } catch (error) {
+      console.error('刷新数据失败:', error);
+      toast({
+        title: '数据刷新失败',
+        description: '请稍后重试',
+        status: 'error',
+        duration: 2000,
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // 清理重复记录
+  const handleCleanupDuplicates = async () => {
+    try {
+      const { cleanupDuplicateUserStats } = await import('../utils/databaseStorage');
+      
+      const result = await cleanupDuplicateUserStats();
+      
+      if (result.success) {
+        toast({
+          title: '清理成功',
+          description: result.message,
+          status: 'success',
+          duration: 3000,
+        });
+        
+        // 清理完成后刷新数据
+        setTimeout(() => {
+          handleRefreshData();
+        }, 1000);
+      } else {
+        toast({
+          title: '清理失败',
+          description: result.message,
+          status: 'error',
+          duration: 3000,
+        });
+      }
+      
+      console.log('清理重复记录结果:', result);
+    } catch (error) {
+      console.error('清理重复记录失败:', error);
+      toast({
+        title: '清理异常',
+        description: '请查看控制台错误信息',
+        status: 'error',
+        duration: 2000,
+      });
+    }
+  };
 
   const handleDeleteFavorite = (id: string) => {
     removeFavorite(id);
@@ -315,37 +382,187 @@ const SpacePage = () => {
             </Flex>
 
             {/* 使用统计 */}
-            <StatGroup
-              bg={bgColor}
-              p={6}
-              borderRadius="lg"
-              borderWidth="1px"
-              borderColor={borderColor}
-              display="grid"
-              gridTemplateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(5, 1fr)' }}
-              gap={3}
-            >
-              <Stat>
-                <StatLabel>{t('space.chatCount')}</StatLabel>
-                <StatNumber>{userStats.conversations}</StatNumber>
-              </Stat>
-              <Stat>
-                <StatLabel>{t('space.imageCount')}</StatLabel>
-                <StatNumber>{userStats.images}</StatNumber>
-              </Stat>
-              <Stat>
-                <StatLabel>{t('space.readCount')}</StatLabel>
-                <StatNumber>{userStats.documents}</StatNumber>
-              </Stat>
-              <Stat>
-                <StatLabel>{t('space.videos')}</StatLabel>
-                <StatNumber>{userStats.videos || 0}</StatNumber>
-              </Stat>
-              <Stat>
-                <StatLabel>{t('space.favoriteCount')}</StatLabel>
-                <StatNumber>{favorites.length}</StatNumber>
-              </Stat>
-            </StatGroup>
+            <VStack align="stretch" spacing={4}>
+              <Flex justify="space-between" align="center">
+                <Heading size="md">使用统计</Heading>
+                <HStack spacing={2}>
+                  {(userDataLoading || isRefreshing) && (
+                    <Spinner size="sm" color="purple.500" />
+                  )}
+                  <IconButton
+                    aria-label="清理重复记录"
+                    icon={<Text fontSize="xs">🧹</Text>}
+                    size="sm"
+                    variant="outline"
+                    onClick={handleCleanupDuplicates}
+                    title="清理数据库重复记录"
+                    colorScheme="red"
+                  />
+                  <IconButton
+                    aria-label="刷新数据"
+                    icon={<FiRefreshCw />}
+                    size="sm"
+                    variant="outline"
+                    isLoading={isRefreshing}
+                    onClick={handleRefreshData}
+                    title="从数据库刷新最新数据"
+                  />
+                </HStack>
+              </Flex>
+              <StatGroup
+                bg={bgColor}
+                p={6}
+                borderRadius="lg"
+                borderWidth="1px"
+                borderColor={borderColor}
+                display="grid"
+                gridTemplateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(5, 1fr)' }}
+                gap={3}
+              >
+                <Stat>
+                  <StatLabel>{t('space.chatCount')}</StatLabel>
+                  <StatNumber>{userStats.conversations}</StatNumber>
+                </Stat>
+                <Stat>
+                  <StatLabel>{t('space.imageCount')}</StatLabel>
+                  <StatNumber>{userStats.images}</StatNumber>
+                </Stat>
+                <Stat>
+                  <StatLabel>{t('space.readCount')}</StatLabel>
+                  <StatNumber>{userStats.documents}</StatNumber>
+                </Stat>
+                <Stat>
+                  <StatLabel>{t('space.videos')}</StatLabel>
+                  <StatNumber>{userStats.videos || 0}</StatNumber>
+                </Stat>
+                <Stat>
+                  <StatLabel>{t('space.favoriteCount')}</StatLabel>
+                  <StatNumber>{favorites.length}</StatNumber>
+                </Stat>
+              </StatGroup>
+            </VStack>
+
+            {/* 免费额度使用情况 */}
+            <VStack align="stretch" spacing={4}>
+              <Heading size="md">免费额度使用情况</Heading>
+              <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={4}>
+                <Box
+                  bg={bgColor}
+                  p={4}
+                  borderRadius="lg"
+                  borderWidth="1px"
+                  borderColor={borderColor}
+                >
+                  <VStack align="start" spacing={2}>
+                    <HStack>
+                      <Icon as={FiMessageSquare} color="blue.500" />
+                      <Text fontWeight="bold">AI对话</Text>
+                    </HStack>
+                    <Text fontSize="sm" color="gray.500">
+                      已使用: {userStats.free_conversations_used} / {userStats.free_conversations_limit}
+                    </Text>
+                    <Box w="100%" bg="gray.200" borderRadius="full" h="8px">
+                      <Box
+                        bg="blue.500"
+                        h="100%"
+                        borderRadius="full"
+                        w={`${Math.min(100, (userStats.free_conversations_used / userStats.free_conversations_limit) * 100)}%`}
+                      />
+                    </Box>
+                    <Text fontSize="xs" color={userStats.free_conversations_used >= userStats.free_conversations_limit ? "red.500" : "green.500"}>
+                      剩余: {Math.max(0, userStats.free_conversations_limit - userStats.free_conversations_used)} 次
+                    </Text>
+                  </VStack>
+                </Box>
+
+                <Box
+                  bg={bgColor}
+                  p={4}
+                  borderRadius="lg"
+                  borderWidth="1px"
+                  borderColor={borderColor}
+                >
+                  <VStack align="start" spacing={2}>
+                    <HStack>
+                      <Icon as={FiImage} color="pink.500" />
+                      <Text fontWeight="bold">AI绘图</Text>
+                    </HStack>
+                    <Text fontSize="sm" color="gray.500">
+                      已使用: {userStats.free_images_used} / {userStats.free_images_limit}
+                    </Text>
+                    <Box w="100%" bg="gray.200" borderRadius="full" h="8px">
+                      <Box
+                        bg="pink.500"
+                        h="100%"
+                        borderRadius="full"
+                        w={`${Math.min(100, (userStats.free_images_used / userStats.free_images_limit) * 100)}%`}
+                      />
+                    </Box>
+                    <Text fontSize="xs" color={userStats.free_images_used >= userStats.free_images_limit ? "red.500" : "green.500"}>
+                      剩余: {Math.max(0, userStats.free_images_limit - userStats.free_images_used)} 次
+                    </Text>
+                  </VStack>
+                </Box>
+
+                <Box
+                  bg={bgColor}
+                  p={4}
+                  borderRadius="lg"
+                  borderWidth="1px"
+                  borderColor={borderColor}
+                >
+                  <VStack align="start" spacing={2}>
+                    <HStack>
+                      <Icon as={FiBook} color="green.500" />
+                      <Text fontWeight="bold">文档阅读</Text>
+                    </HStack>
+                    <Text fontSize="sm" color="gray.500">
+                      已使用: {userStats.free_documents_used} / {userStats.free_documents_limit}
+                    </Text>
+                    <Box w="100%" bg="gray.200" borderRadius="full" h="8px">
+                      <Box
+                        bg="green.500"
+                        h="100%"
+                        borderRadius="full"
+                        w={`${Math.min(100, (userStats.free_documents_used / userStats.free_documents_limit) * 100)}%`}
+                      />
+                    </Box>
+                    <Text fontSize="xs" color={userStats.free_documents_used >= userStats.free_documents_limit ? "red.500" : "green.500"}>
+                      剩余: {Math.max(0, userStats.free_documents_limit - userStats.free_documents_used)} 次
+                    </Text>
+                  </VStack>
+                </Box>
+
+                <Box
+                  bg={bgColor}
+                  p={4}
+                  borderRadius="lg"
+                  borderWidth="1px"
+                  borderColor={borderColor}
+                >
+                  <VStack align="start" spacing={2}>
+                    <HStack>
+                      <Icon as={FiVideo} color="purple.500" />
+                      <Text fontWeight="bold">AI视频</Text>
+                    </HStack>
+                    <Text fontSize="sm" color="gray.500">
+                      已使用: {userStats.free_videos_used} / {userStats.free_videos_limit}
+                    </Text>
+                    <Box w="100%" bg="gray.200" borderRadius="full" h="8px">
+                      <Box
+                        bg="purple.500"
+                        h="100%"
+                        borderRadius="full"
+                        w={`${Math.min(100, (userStats.free_videos_used / userStats.free_videos_limit) * 100)}%`}
+                      />
+                    </Box>
+                    <Text fontSize="xs" color={userStats.free_videos_used >= userStats.free_videos_limit ? "red.500" : "green.500"}>
+                      剩余: {Math.max(0, userStats.free_videos_limit - userStats.free_videos_used)} 次
+                    </Text>
+                  </VStack>
+                </Box>
+              </SimpleGrid>
+            </VStack>
 
             {/* 最近活动 */}
             <VStack align="stretch" spacing={4}>
