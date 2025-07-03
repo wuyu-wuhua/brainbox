@@ -10,6 +10,7 @@ export interface Message {
     mode?: string;
     actualSize?: string;
     prompt?: string;
+    motionStrength?: number;
     [key: string]: any;
   };
 }
