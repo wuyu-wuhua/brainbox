@@ -370,13 +370,14 @@ export const saveHistoryToDB = async (
     }
 
     const now = new Date().toISOString();
-    
+
     const { data, error } = await supabase
       .from('chat_histories')
       .insert([
         {
           user_id: userId,
           content: JSON.stringify(messages),
+          messages: JSON.stringify(messages),
           model: model,
           type: type,
           created_at: now,
@@ -411,6 +412,7 @@ export const updateHistoryInDB = async (sessionId: string, messages: Message[], 
       .from('chat_histories')
       .update({
         messages: JSON.stringify(messages),
+        content: JSON.stringify(messages),
         model,
         timestamp: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -457,9 +459,9 @@ export const getHistoriesFromDB = async (): Promise<ChatHistory[]> => {
       id: dbHistory.id,
       title: dbHistory.title,
       model: dbHistory.model,
-      messages: typeof dbHistory.messages === 'string' 
-        ? JSON.parse(dbHistory.messages) 
-        : dbHistory.messages,
+      messages: dbHistory.messages
+        ? (typeof dbHistory.messages === 'string' ? JSON.parse(dbHistory.messages) : dbHistory.messages)
+        : ((dbHistory as any).content ? JSON.parse((dbHistory as any).content) : []),
       timestamp: new Date(dbHistory.timestamp).getTime(), // 将字符串日期转换为数字时间戳
       type: dbHistory.type
     }));
@@ -487,14 +489,14 @@ export const deleteHistoryFromDB = async (id: string): Promise<boolean> => {
     if (isUUID) {
       // 新格式：直接按 UUID 删除
       ({ error } = await supabase
-        .from('chat_histories')
-        .delete()
-        .eq('id', id)
+      .from('chat_histories')
+      .delete()
+      .eq('id', id)
         .eq('user_id', userId));
 
-      if (error) {
-        console.error('删除历史记录失败:', error);
-        return false;
+    if (error) {
+      console.error('删除历史记录失败:', error);
+      return false;
       }
     } else {
       // 旧格式：本地记录，数据库中不存在，直接视为删除成功
@@ -567,13 +569,13 @@ export const deleteMultipleHistoriesFromDB = async (ids: string[]): Promise<bool
 
     if (uuidIds.length > 0) {
       ({ error } = await supabase
-        .from('chat_histories')
-        .delete()
+      .from('chat_histories')
+      .delete()
         .in('id', uuidIds)
         .eq('user_id', userId));
-      if (error) {
+    if (error) {
         console.error('批量删除 UUID 记录失败:', error);
-        return false;
+      return false;
       }
     }
 
@@ -750,41 +752,103 @@ export const getCompleteUserStatsFromDB = async (): Promise<{
       return null;
     }
 
-    const { data, error } = await supabase
+    console.log('=== getCompleteUserStatsFromDB 开始 ===');
+    console.log('当前用户ID:', userId);
+
+    // 获取用户的所有记录，按创建时间降序排列（最新的在前面）
+    const { data: allRecords, error } = await supabase
       .from('user_stats')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .order('created_at', { ascending: false });
 
-    if (error && error.code !== 'PGRST116') { // PGRST116 是"找不到记录"的错误
+    if (error && error.code !== 'PGRST116') {
       console.error('获取完整统计数据失败:', error);
       return null;
     }
 
-    if (!data) {
+    if (!allRecords || allRecords.length === 0) {
+      console.log('数据库中没有找到用户记录，用户ID:', userId);
       return null;
     }
 
-    // 直接从表字段读取数据（适应现有表结构）
+    console.log(`找到${allRecords.length}条用户记录`);
+    
+    let data;
+    if (allRecords.length === 1) {
+      // 只有一条记录，直接使用
+      data = allRecords[0];
+      console.log('使用唯一记录:', data);
+    } else {
+      // 有多条记录，需要处理
+      console.warn(`⚠️ 发现多条记录（${allRecords.length}条），使用合并策略`);
+      
+      // 策略：使用最新记录作为基础，但对于计数字段取所有记录的最大值
+      const latestRecord = allRecords[0];
+      console.log('最新记录（作为基础）:', latestRecord);
+      
+      // 合并所有记录，取最大值
+      data = allRecords.reduce((merged, record) => {
+        return {
+          ...merged,
+          // 计数字段取最大值
+          conversations: Math.max(merged.conversations || 0, record.conversations || 0),
+          images: Math.max(merged.images || 0, record.images || 0),
+          documents: Math.max(merged.documents || 0, record.documents || 0),
+          videos: Math.max(merged.videos || 0, record.videos || 0),
+          // 免费额度使用情况也取最大值
+          free_conversations_used: Math.max(merged.free_conversations_used || 0, record.free_conversations_used || 0),
+          free_images_used: Math.max(merged.free_images_used || 0, record.free_images_used || 0),
+          free_documents_used: Math.max(merged.free_documents_used || 0, record.free_documents_used || 0),
+          free_videos_used: Math.max(merged.free_videos_used || 0, record.free_videos_used || 0),
+          // 积分和限制使用最新记录的值
+          credits: latestRecord.credits,
+          free_conversations_limit: latestRecord.free_conversations_limit,
+          free_images_limit: latestRecord.free_images_limit,
+          free_documents_limit: latestRecord.free_documents_limit,
+          free_videos_limit: latestRecord.free_videos_limit,
+        };
+      }, latestRecord);
+      
+      console.log('合并后的数据:', data);
+    }
+
+    console.log('从数据库获取到的原始数据:', data);
+    console.log('原始数据的所有字段:', Object.keys(data));
+
+    // 尝试多种可能的字段名映射（中文字段名、英文字段名、下划线格式等）
     const completeStats = {
-      conversations: data.conversations || 0,
-      images: data.images || 0,
-      documents: data.documents || 0,
-      videos: data.videos || 0,
-      credits: data.credits || 10000,
+      // 对话次数 - 尝试多种可能的字段名
+      conversations: data.conversations || data['对话次数'] || data.对话次数 || data.chat_count || data.total_conversations || 0,
+      // 图片生成次数
+      images: data.images || data['图片'] || data.图片 || data.image_count || data.total_images || 0,
+      // 文档阅读次数  
+      documents: data.documents || data['文档'] || data.文档 || data.document_count || data.total_documents || 0,
+      // 视频生成次数
+      videos: data.videos || data['视频'] || data.视频 || data.video_count || data.total_videos || 0,
+      // 积分
+      credits: data.credits || data['积分'] || data.积分 || data.credit_balance || 10000,
       // 免费额度使用情况
-      free_conversations_used: data.free_conversations_used || 0,
-      free_images_used: data.free_images_used || 0,
-      free_documents_used: data.free_documents_used || 0,
-      free_videos_used: data.free_videos_used || 0,
+      free_conversations_used: data.free_conversations_used || data['免费对话已用'] || data.免费对话已用 || 0,
+      free_images_used: data.free_images_used || data['免费图片已用'] || data.免费图片已用 || 0,
+      free_documents_used: data.free_documents_used || data['免费文档已用'] || data.免费文档已用 || 0,
+      free_videos_used: data.free_videos_used || data['免费视频已用'] || data.免费视频已用 || 0,
       // 免费额度限制
-      free_conversations_limit: data.free_conversations_limit || 50,
-      free_images_limit: data.free_images_limit || 5,
-      free_documents_limit: data.free_documents_limit || 50,
-      free_videos_limit: data.free_videos_limit || 2,
+      free_conversations_limit: data.free_conversations_limit || data['免费对话限制'] || data.免费对话限制 || 50,
+      free_images_limit: data.free_images_limit || data['免费图片限制'] || data.免费图片限制 || 5,
+      free_documents_limit: data.free_documents_limit || data['免费文档限制'] || data.免费文档限制 || 50,
+      free_videos_limit: data.free_videos_limit || data['免费视频限制'] || data.免费视频限制 || 2,
     };
 
-    console.log('获取到完整统计数据:', completeStats);
+    console.log('字段映射结果:');
+    console.log('  conversations:', data.conversations, '||', data['对话次数'], '||', data.对话次数, '||', data.chat_count, '||', data.total_conversations, '=>', completeStats.conversations);
+    console.log('  images:', data.images, '||', data['图片'], '||', data.图片, '||', data.image_count, '||', data.total_images, '=>', completeStats.images);
+    console.log('  documents:', data.documents, '||', data['文档'], '||', data.文档, '||', data.document_count, '||', data.total_documents, '=>', completeStats.documents);
+    console.log('  videos:', data.videos, '||', data['视频'], '||', data.视频, '||', data.video_count, '||', data.total_videos, '=>', completeStats.videos);
+
+    console.log('最终映射的完整统计数据:', completeStats);
+    console.log('=== getCompleteUserStatsFromDB 结束 ===');
+    
     return completeStats;
   } catch (error) {
     console.error('获取完整统计数据异常:', error);
@@ -1100,5 +1164,205 @@ export const getDataSyncStatus = async (): Promise<{
   } catch (error) {
     console.error('获取同步状态失败:', error);
     return { local_count: 0, database_count: 0, needs_sync: false };
+  }
+};
+
+// 调试函数：检查用户统计数据表结构和内容
+export const debugUserStatsTable = async (): Promise<{ success: boolean; message: string; data?: any }> => {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return { success: false, message: '用户未登录' };
+    }
+
+    console.log('=== debugUserStatsTable 开始 ===');
+    console.log('当前用户ID:', userId);
+
+    // 1. 获取当前用户的所有记录（不使用single，因为可能有多条）
+    const { data: userAllData, error: userError } = await supabase
+      .from('user_stats')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false }); // 按创建时间降序排列
+
+    if (userError) {
+      console.error('获取用户数据失败:', userError);
+      return { success: false, message: `获取用户数据失败: ${userError.message}` };
+    }
+
+    console.log(`当前用户的所有记录（共${userAllData?.length || 0}条）:`, userAllData);
+    
+    if (userAllData && userAllData.length > 0) {
+      console.log('最新记录:', userAllData[0]);
+      console.log('最新记录的字段:', Object.keys(userAllData[0]));
+      
+      if (userAllData.length > 1) {
+        console.warn(`⚠️ 发现重复记录！用户${userId}有${userAllData.length}条记录`);
+        console.log('所有记录的ID和创建时间:');
+        userAllData.forEach((record, index) => {
+          console.log(`  记录${index + 1}: ID=${record.id}, 创建时间=${record.created_at}, 对话=${record.conversations}, 图片=${record.images}, 文档=${record.documents}, 视频=${record.videos}`);
+        });
+      }
+    }
+
+    // 2. 获取表中任意一条记录来了解表结构
+    const { data: sampleData, error: sampleError } = await supabase
+      .from('user_stats')
+      .select('*')
+      .limit(1);
+
+    if (sampleError) {
+      console.error('获取样本数据失败:', sampleError);
+    } else if (sampleData && sampleData.length > 0) {
+      console.log('表结构样本数据:', sampleData[0]);
+      console.log('表的所有字段名:', Object.keys(sampleData[0]));
+    }
+
+    // 3. 统计各用户的记录数量
+    const { data: allUserStats, error: statsError } = await supabase
+      .from('user_stats')
+      .select('user_id')
+      .order('created_at', { ascending: false });
+
+    if (!statsError && allUserStats) {
+      const userCounts = allUserStats.reduce((acc, record) => {
+        acc[record.user_id] = (acc[record.user_id] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      const duplicateUsers = Object.entries(userCounts).filter(([_, count]) => count > 1);
+      if (duplicateUsers.length > 0) {
+        console.warn('发现有重复记录的用户:');
+        duplicateUsers.forEach(([userId, count]) => {
+          console.log(`  用户${userId}: ${count}条记录`);
+        });
+      }
+    }
+
+    const result = {
+      success: true,
+      message: '调试信息已输出到控制台',
+      data: {
+        currentUserRecords: userAllData,
+        recordCount: userAllData?.length || 0,
+        sampleRecord: sampleData?.[0],
+        hasDuplicates: userAllData && userAllData.length > 1
+      }
+    };
+
+    console.log('=== debugUserStatsTable 结束 ===');
+    return result;
+
+  } catch (error) {
+    console.error('调试表结构异常:', error);
+    return { success: false, message: `调试异常: ${error}` };
+  }
+};
+
+// 清理重复的用户统计记录（保留最新的，删除旧的）
+export const cleanupDuplicateUserStats = async (): Promise<{ success: boolean; message: string; details?: any }> => {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return { success: false, message: '用户未登录' };
+    }
+
+    console.log('=== cleanupDuplicateUserStats 开始 ===');
+    console.log('当前用户ID:', userId);
+
+    // 获取用户的所有记录，按创建时间降序排列
+    const { data: allRecords, error: fetchError } = await supabase
+      .from('user_stats')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (fetchError) {
+      console.error('获取用户记录失败:', fetchError);
+      return { success: false, message: `获取记录失败: ${fetchError.message}` };
+    }
+
+    if (!allRecords || allRecords.length <= 1) {
+      console.log('用户只有一条或没有记录，无需清理');
+      return { success: true, message: '无需清理，用户只有一条或没有记录' };
+    }
+
+    console.log(`发现${allRecords.length}条记录，开始清理...`);
+
+    // 保留最新的记录（第一条）
+    const latestRecord = allRecords[0];
+    const oldRecords = allRecords.slice(1);
+
+    console.log('保留的最新记录:', latestRecord);
+    console.log(`准备删除${oldRecords.length}条旧记录`);
+
+    // 在删除之前，先合并数据到最新记录中
+    const mergedData = allRecords.reduce((merged, record) => {
+      return {
+        ...merged,
+        // 计数字段取最大值
+        conversations: Math.max(merged.conversations || 0, record.conversations || 0),
+        images: Math.max(merged.images || 0, record.images || 0),
+        documents: Math.max(merged.documents || 0, record.documents || 0),
+        videos: Math.max(merged.videos || 0, record.videos || 0),
+        // 免费额度使用情况也取最大值
+        free_conversations_used: Math.max(merged.free_conversations_used || 0, record.free_conversations_used || 0),
+        free_images_used: Math.max(merged.free_images_used || 0, record.free_images_used || 0),
+        free_documents_used: Math.max(merged.free_documents_used || 0, record.free_documents_used || 0),
+        free_videos_used: Math.max(merged.free_videos_used || 0, record.free_videos_used || 0),
+      };
+    }, latestRecord);
+
+    // 更新最新记录为合并后的数据
+    const { error: updateError } = await supabase
+      .from('user_stats')
+      .update({
+        conversations: mergedData.conversations,
+        images: mergedData.images,
+        documents: mergedData.documents,
+        videos: mergedData.videos,
+        free_conversations_used: mergedData.free_conversations_used,
+        free_images_used: mergedData.free_images_used,
+        free_documents_used: mergedData.free_documents_used,
+        free_videos_used: mergedData.free_videos_used,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', latestRecord.id);
+
+    if (updateError) {
+      console.error('更新最新记录失败:', updateError);
+      return { success: false, message: `更新记录失败: ${updateError.message}` };
+    }
+
+    console.log('已更新最新记录为合并数据');
+
+    // 删除旧记录
+    const oldRecordIds = oldRecords.map(record => record.id);
+    const { error: deleteError } = await supabase
+      .from('user_stats')
+      .delete()
+      .in('id', oldRecordIds);
+
+    if (deleteError) {
+      console.error('删除旧记录失败:', deleteError);
+      return { success: false, message: `删除旧记录失败: ${deleteError.message}` };
+    }
+
+    console.log(`成功删除${oldRecords.length}条旧记录`);
+    console.log('=== cleanupDuplicateUserStats 结束 ===');
+
+    return {
+      success: true,
+      message: `清理完成：保留1条记录，删除${oldRecords.length}条重复记录`,
+      details: {
+        kept: latestRecord,
+        deleted: oldRecords.length,
+        mergedData: mergedData
+      }
+    };
+
+  } catch (error) {
+    console.error('清理重复记录异常:', error);
+    return { success: false, message: `清理异常: ${error}` };
   }
 }; 
