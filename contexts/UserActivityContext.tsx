@@ -13,7 +13,8 @@ import {
   saveCompleteUserStatsToDB,
   getCompleteUserStatsFromDB,
   forceUpdateUserStats,
-  forceAddActivity
+  forceAddActivity,
+  debugUserStatsTable
 } from '../utils/databaseStorage'
 import { ChatHistory } from '../types/chat'
 import { getCurrentTimeString } from '../utils/dateUtils'
@@ -156,8 +157,9 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (user && !hasLoaded) {
-      // 立即从本地加载数据
+    if (user) {
+      console.log('用户状态变化，开始加载用户数据...', user.id);
+      // 立即从本地加载数据（快速显示）
       const userId = user.id;
       
       // 加载历史记录
@@ -189,13 +191,16 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
       }
       
       setLoading(true);
-      // 后台同步数据库数据
+      
+      // 后台同步数据库数据 - 每次用户登录都重新加载
       loadUserData().finally(() => {
         setLoading(false);
         setHasLoaded(true);
       });
-    } else if (!user) {
+      
+    } else {
       // 用户未登录，重置所有数据
+      console.log('用户未登录，重置数据');
       setHistories([]);
       setFavorites([]);
       setUserStats({
@@ -217,7 +222,7 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
       setLoading(false);
       setHasLoaded(false);
     }
-  }, [user])
+  }, [user?.id]) // 监听用户ID变化，确保每次登录都重新加载
 
   // 监听历史记录更新事件
   useEffect(() => {
@@ -279,6 +284,7 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
         const localHistories = getHistories();
         setHistories(localHistories);
       }
+      
       // 活动（历史）
       const dbActivities = await getUserActivitiesFromDB(100)
       if (dbActivities && dbActivities.length > 0) {
@@ -292,6 +298,7 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
         setRecentActivities(activities)
         localStorage.setItem(`userActivities_${userId}`, JSON.stringify(activities))
       }
+      
       // 收藏
       const dbFavorites = await getUserFavoritesFromDB()
       if (dbFavorites && dbFavorites.length > 0) {
@@ -305,31 +312,65 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
         setFavorites(favs)
         localStorage.setItem(`userFavorites_${userId}`, JSON.stringify(favs))
       }
-      // 尝试从数据库获取完整统计数据（仅作为备份同步）
-      const dbStats = await getCompleteUserStatsFromDB();
-      if (dbStats && (dbStats.conversations > 0 || dbStats.images > 0 || dbStats.documents > 0 || dbStats.videos > 0)) {
-        // 只有当数据库有有效数据时才考虑同步，取本地和数据库中的较大值
-        const currentStats = {
-          conversations: Math.max(userStats.conversations, dbStats.conversations),
-          images: Math.max(userStats.images, dbStats.images),
-          documents: Math.max(userStats.documents, dbStats.documents),
-          videos: Math.max(userStats.videos, dbStats.videos),
-          credits: dbStats.credits || userStats.credits || 10000,
-          // 免费额度使用情况从数据库同步（保持精确性）
-          free_conversations_used: dbStats.free_conversations_used || 0,
-          free_images_used: dbStats.free_images_used || 0,
-          free_documents_used: dbStats.free_documents_used || 0,
-          free_videos_used: dbStats.free_videos_used || 0,
-          // 免费额度限制（可从数据库调整）
-          free_conversations_limit: dbStats.free_conversations_limit || 50,
-          free_images_limit: dbStats.free_images_limit || 5,
-          free_documents_limit: dbStats.free_documents_limit || 50,
-          free_videos_limit: dbStats.free_videos_limit || 2,
-        };
-        setUserStats(currentStats);
-        localStorage.setItem(`userStats_${userId}`, JSON.stringify(currentStats));
+      
+      // 统计数据 - 始终从数据库加载用户的真实数据
+      console.log('开始从数据库加载用户统计数据...');
+      
+      // 首先调试表结构，确认字段名
+      console.log('调试数据库表结构...');
+      try {
+        const debugResult = await debugUserStatsTable();
+        console.log('调试结果:', debugResult);
+      } catch (debugError) {
+        console.error('调试表结构失败:', debugError);
       }
+      
+      const dbStats = await getCompleteUserStatsFromDB();
+      
+      if (dbStats) {
+        // 数据库中有用户记录，直接使用数据库数据
+        console.log('从数据库加载到用户统计数据:', dbStats);
+        setUserStats(dbStats);
+        localStorage.setItem(`userStats_${userId}`, JSON.stringify(dbStats));
+      } else {
+        // 数据库中没有用户记录，创建默认记录并保存到数据库
+        console.log('数据库中没有用户记录，创建默认统计数据...');
+        const defaultStats = {
+          conversations: 0,
+          images: 0,
+          documents: 0,
+          videos: 0,
+          credits: 10000, // 默认给新用户10000积分
+          // 免费额度使用情况
+          free_conversations_used: 0,
+          free_images_used: 0,
+          free_documents_used: 0,
+          free_videos_used: 0,
+          // 免费额度限制
+          free_conversations_limit: 50,
+          free_images_limit: 5,
+          free_documents_limit: 50,
+          free_videos_limit: 2,
+        };
+        
+        // 保存默认统计数据到数据库
+        try {
+          const saveSuccess = await saveCompleteUserStatsToDB(defaultStats);
+          if (saveSuccess) {
+            console.log('默认统计数据已保存到数据库');
+          } else {
+            console.warn('默认统计数据保存到数据库失败，仅使用本地数据');
+          }
+        } catch (error) {
+          console.error('保存默认统计数据到数据库异常:', error);
+        }
+        
+        setUserStats(defaultStats);
+        localStorage.setItem(`userStats_${userId}`, JSON.stringify(defaultStats));
+      }
+      
     } catch (e) {
+      console.error('加载用户数据失败，使用本地备份数据:', e);
       // 兜底本地
       const savedHistories = localStorage.getItem(`chatHistories_${userId}`)
       // 这里只同步到localStorage，具体页面/组件可自行拉取
@@ -338,7 +379,28 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
       const savedFavorites = localStorage.getItem(`userFavorites_${userId}`)
       if (savedFavorites) setFavorites(JSON.parse(savedFavorites))
       const savedStats = localStorage.getItem(`userStats_${userId}`);
-      if (savedStats) setUserStats(JSON.parse(savedStats));
+      if (savedStats) {
+        setUserStats(JSON.parse(savedStats));
+      } else {
+        // 如果连本地数据都没有，使用默认数据
+        const defaultStats = {
+          conversations: 0,
+          images: 0,
+          documents: 0,
+          videos: 0,
+          credits: 10000,
+          free_conversations_used: 0,
+          free_images_used: 0,
+          free_documents_used: 0,
+          free_videos_used: 0,
+          free_conversations_limit: 50,
+          free_images_limit: 5,
+          free_documents_limit: 50,
+          free_videos_limit: 2,
+        };
+        setUserStats(defaultStats);
+        localStorage.setItem(`userStats_${userId}`, JSON.stringify(defaultStats));
+      }
     }
   }
 
@@ -528,12 +590,34 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
 
   const updateStats = (type: keyof UserStats, increment: number = 1) => {
     if (!user) return
+    
+    // 确定对应的免费额度使用字段
+    let freeUsedKey: keyof UserStats | null = null;
+    if (type === 'conversations') {
+      freeUsedKey = 'free_conversations_used';
+    } else if (type === 'images') {
+      freeUsedKey = 'free_images_used';
+    } else if (type === 'documents') {
+      freeUsedKey = 'free_documents_used';
+    } else if (type === 'videos') {
+      freeUsedKey = 'free_videos_used';
+    }
+    
+    // 更新统计数据，同时更新总计数和免费额度使用计数
     const updatedStats = {
       ...userStats,
-      [type]: userStats[type] + increment
+      [type]: userStats[type] + increment,
+      // 如果有对应的免费额度字段，也更新它
+      ...(freeUsedKey ? { [freeUsedKey]: userStats[freeUsedKey] + increment } : {})
     }
+    
+    console.log(`updateStats - 更新 ${type}，增加 ${increment}，同时更新免费额度使用计数`);
+    console.log('更新前:', { [type]: userStats[type], ...(freeUsedKey ? { [freeUsedKey]: userStats[freeUsedKey] } : {}) });
+    console.log('更新后:', { [type]: updatedStats[type], ...(freeUsedKey ? { [freeUsedKey]: updatedStats[freeUsedKey] } : {}) });
+    
     setUserStats(updatedStats)
     saveUserData(updatedStats, recentActivities, favorites)
+    
     // 使用强制方法同步完整统计数据到数据库
     console.log('updateStats - 使用强制方法保存统计数据:', updatedStats);
     forceUpdateUserStats(updatedStats).then(result => {
