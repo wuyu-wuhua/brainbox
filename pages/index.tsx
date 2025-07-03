@@ -17,8 +17,10 @@ import {
   HStack,
   Badge,
   Tooltip,
+  IconButton,
 } from '@chakra-ui/react';
-import { FiEdit, FiGlobe, FiMapPin, FiFileText, FiFilm, FiRefreshCw, FiVideo } from 'react-icons/fi';
+import { FiEdit, FiGlobe, FiMapPin, FiFileText, FiFilm, FiRefreshCw, FiVideo, FiTrash2 } from 'react-icons/fi';
+import { FaTimes } from 'react-icons/fa';
 import { Message, ChatMode, ChatHistory } from '../types/chat';
 import ChatInput from '../components/ChatInput';
 import MobileNav from '../components/MobileNav';
@@ -91,12 +93,49 @@ export default function Home() {
   const { user } = useAuth();
   const isHistoryRestored = useRef(false);
 
-
   // 判断是否免费用户
   const isFreeUser = getUserQuota('conversation') !== Infinity;
   const freeQuota = getUserQuota('conversation');
-  const freeUsed = userStats.conversations;
+  const freeUsed = userStats.free_conversations_used;
   const creditCost = getModelType(selectedModel) === 'advanced' ? 20 : 5;
+
+  // 添加防抖计时器引用
+  const restoreTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastRestoreRef = useRef<number>(0);
+
+  // 页面状态变化时自动保存 - 添加防抖机制
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSaveRef = useRef<number>(0);
+  
+  useEffect(() => {
+    if (isHistoryRestored.current) return; // 历史还原后不自动保存
+
+    if (user) {
+      // 清除之前的定时器
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      const now = Date.now();
+      // 防抖机制：1秒内只保存一次状态
+      if (now - lastSaveRef.current < 1000) {
+        saveTimeoutRef.current = setTimeout(() => {
+          lastSaveRef.current = Date.now();
+          saveCurrentState();
+        }, 1000);
+        return;
+      }
+
+      lastSaveRef.current = now;
+      saveCurrentState();
+    }
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [messages, selectedModel, inputValue, currentSessionId, chatMode, user]);
 
   useEffect(() => {
     const history = localStorage.getItem('search_history');
@@ -141,10 +180,10 @@ export default function Home() {
       targetHistory = histories.find(h => h.id === loadHistory);
     }
     if (targetHistory && (targetHistory.type === 'chat' || targetHistory.type === 'read')) {
-      console.log('=== 开始加载历史记录 ===');
-      console.log('目标历史记录ID:', targetHistory.id);
-      console.log('历史记录类型:', targetHistory.type);
-      console.log('历史记录消息数量:', targetHistory.messages.length);
+      console.log(t('history.loadingHistory'));
+      console.log(t('history.targetHistoryId', { id: targetHistory.id }));
+      console.log(t('history.historyType', { type: targetHistory.type }));
+      console.log(t('history.historyMessages', { length: targetHistory.messages.length }));
 
       // 如果是阅读类型的历史记录，重定向到阅读页面
       if (targetHistory.type === 'read') {
@@ -168,6 +207,8 @@ export default function Home() {
         sessionStorage.removeItem('newChatSession');
         sessionStorage.removeItem('fromOtherPage');
         sessionStorage.setItem('loadingHistory', 'true');
+        // 设置选择的历史记录ID标记
+        sessionStorage.setItem('selectedHistoryId', targetHistory.id);
       }
       pageStateManager.clearPageState('chat');
       setMessages(targetHistory.messages);
@@ -204,157 +245,33 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 页面加载时恢复状态
+  // 页面加载状态恢复的useEffect
   useEffect(() => {
-    console.log('=== 页面加载状态恢复 useEffect 触发 ===');
-    console.log('isHistoryRestored.current:', isHistoryRestored.current);
-    console.log('user:', !!user);
+    console.log('=== 页面加载状态恢复 useEffect 开始 ===');
+    console.log('用户状态:', user);
+    console.log('查询参数:', router.query);
 
-    if (isHistoryRestored.current) {
-      console.log('已还原历史，跳过状态恢复');
-      return; // 已还原历史，跳过
-    }
-    if (user) {
-      const { loadHistory } = router.query;
-      if (loadHistory && typeof loadHistory === 'string') {
-        console.log('正在处理历史记录加载，跳过');
-        return;
-      }
-      const isLoadingHistory = typeof window !== 'undefined' ? 
-        sessionStorage.getItem('loadingHistory') : null;
-      if (isLoadingHistory === 'true') {
-        console.log('正在加载历史记录，跳过状态恢复');
-        return;
-      }
-      const isNewChatSession = typeof window !== 'undefined' ? 
-        sessionStorage.getItem('newChatSession') : null;
-      if (isNewChatSession === 'true') {
-        console.log('检测到新建对话标记，重置界面');
-        setMessages([]);
-        setInputValue('');
-        setCurrentSessionId('');
-        currentSessionIdRef.current = '';
-        setIsNewSession(true);
-        setChatMode('default');
-        setIsLoading(false);
-        setStreamingMessage('');
-        pageStateManager.clearPageState('chat');
+    // 如果有新建对话状态，不进行状态恢复
+    if (typeof window !== 'undefined') {
+      const newChatSessionFlag = sessionStorage.getItem('newChatSession');
+      console.log('newChatSession标记:', newChatSessionFlag);
 
+      if (newChatSessionFlag === 'true') {
         if (typeof window !== 'undefined') {
           sessionStorage.removeItem('newChatSession');
         }
         console.log('检测到新建对话状态，已重置聊天界面');
-      } else {
-        console.log('调用 restorePageState');
-        restorePageState();
+        return;
       }
     }
     console.log('=== 页面加载状态恢复 useEffect 结束 ===');
   }, [user, router.query.loadHistory]);
-
-  // 页面状态变化时自动保存
-  useEffect(() => {
-    if (isHistoryRestored.current) return; // 历史还原后不自动保存
-
-    if (user) {
-      saveCurrentState();
-    }
-  }, [messages, selectedModel, inputValue, currentSessionId, chatMode, user]);
-
-  // 页面卸载时保存状态
-  useEffect(() => {
-
-    if (isHistoryRestored.current) return;
-    const handleBeforeUnload = () => {
-      if (user) {
-        saveCurrentState();
-      }
-    };
-    
-    // 监听页面可见性变化
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        // 页面隐藏时，只有在非主动关闭的情况下才保存状态
-        console.log('页面隐藏，检查是否需要保存状态');
-        const isSpecialModeClosed = sessionStorage.getItem('specialModeClosed') === 'true';
-        if (user && !isSpecialModeClosed) {
-          console.log('保存当前状态');
-          saveCurrentState();
-        } else {
-          console.log('特殊模式已被关闭，不保存状态');
-          // 确保清除所有状态
-          pageStateManager.clearPageState('chat');
-        }
-      } else if (document.visibilityState === 'visible') {
-        // 页面变为可见时，检查是否需要恢复特殊模式状态
-        console.log('页面变为可见，检查是否需要恢复状态');
-        setTimeout(() => {
-          if (user && !isHistoryRestored.current) {
-            const isSpecialModeClosed = sessionStorage.getItem('specialModeClosed') === 'true';
-            console.log('特殊模式是否被关闭:', isSpecialModeClosed);
-
-            if (isSpecialModeClosed) {
-              console.log('特殊模式已被用户关闭，保持默认模式');
-              // 确保清除所有状态
-              pageStateManager.clearPageState('chat');
-              setChatMode('default');
-              setMessages([]);
-              setInputValue('');
-              setCurrentSessionId('');
-              currentSessionIdRef.current = '';
-              setIsNewSession(true);
-              return;
-            }
-
-            const savedState = pageStateManager.getPageState('chat');
-            console.log('页面可见时的保存状态:', savedState);
-            
-            // 只有在有保存的状态，且是特殊模式，且用户没有主动关闭的情况下，才恢复特殊模式
-            if (!isSpecialModeClosed && 
-                savedState && 
-                savedState.chatMode && 
-                savedState.chatMode !== 'default') {
-              console.log('从后台返回，恢复特殊模式:', savedState.chatMode);
-              setMessages(savedState.messages || []);
-              setSelectedModel(savedState.selectedModel || 'DeepSeek-R1-0528');
-              setInputValue(savedState.inputValue || '');
-              setCurrentSessionId(savedState.currentSessionId || '');
-              currentSessionIdRef.current = savedState.currentSessionId || '';
-              setIsNewSession(savedState.isNewSession ?? true);
-              setChatMode(savedState.chatMode);
-            } else {
-              // 如果没有满足恢复条件，确保使用默认模式
-              setChatMode('default');
-              setMessages([]);
-              setInputValue('');
-              setCurrentSessionId('');
-              currentSessionIdRef.current = '';
-              setIsNewSession(true);
-            }
-          }
-        }, 100);
-      }
-    };
-    
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (user) {
-
-        saveCurrentState();
-      }
-    };
-  }, [user, messages, selectedModel, inputValue, currentSessionId, chatMode]);
 
   // 监听认证状态变化
   useEffect(() => {
     if (isHistoryRestored.current) return;
     const handleAuthStateChange = () => {
       if (!user) {
-
         setMessages([])
         setCurrentSessionId(null)
         currentSessionIdRef.current = null
@@ -362,11 +279,6 @@ export default function Home() {
         setStreamingMessage('')
         setInputValue('')
         sessionStorage.removeItem('newChatSession');
-      } else {
-        const isNewChatSession = sessionStorage.getItem('newChatSession');
-        if (isNewChatSession !== 'true') {
-          restorePageState()
-        }
       }
     }
     window.addEventListener('auth-state-changed', handleAuthStateChange)
@@ -825,6 +737,8 @@ export default function Home() {
       sessionStorage.setItem('newChatSession', 'true');
       // 清除特殊模式关闭标记
       sessionStorage.removeItem('specialModeClosed');
+      // 清除历史记录选择标记
+      sessionStorage.removeItem('selectedHistoryId');
       pageStateManager.clearPageState('chat');
     }
     
@@ -851,6 +765,7 @@ export default function Home() {
       sessionStorage.removeItem('newChatSession');
       sessionStorage.removeItem('fromOtherPage');
       sessionStorage.removeItem('loadingHistory');
+      sessionStorage.removeItem('selectedHistoryId'); // 清除选择标记，因为是直接加载
     }
 
     // 清除页面状态，避免冲突
@@ -891,6 +806,13 @@ export default function Home() {
       setCurrentSessionId('');
       currentSessionIdRef.current = '';
       setIsNewSession(true);
+      
+      // 清除相关的sessionStorage标记
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('selectedHistoryId');
+        sessionStorage.removeItem('pendingHistory');
+        sessionStorage.removeItem('pendingHistoryLoad');
+      }
       
       toast({
         title: '历史记录已清空',
@@ -1090,40 +1012,49 @@ export default function Home() {
     { text: t('chat.scriptWrite'), icon: FiFilm, color: 'purple', mode: 'script' as ChatMode },
   ];
 
-  // 页面状态管理
+  // 统一保存聊天状态（包括未发送输入）
   const saveCurrentState = () => {
     if (user) {
-      const isSpecialModeClosed = sessionStorage.getItem('specialModeClosed') === 'true';
-      
-      // 只有在用户没有主动关闭特殊模式的情况下才保存状态
-      if (!isSpecialModeClosed) {
-        if (chatMode !== 'default' || messages.length > 0) {
-          console.log('保存聊天状态:', {
-            messages,
-            selectedModel,
-            inputValue,
-            currentSessionId,
-            chatMode,
-            isNewSession
-          });
-          pageStateManager.savePageState('chat', {
-            messages,
-            selectedModel,
-            inputValue,
-            currentSessionId,
-            chatMode,
-            isNewSession
-          });
-        }
-      } else {
-        console.log('特殊模式已被用户关闭，不保存状态');
-        // 确保清除所有状态
-        pageStateManager.clearPageState('chat');
-        // 确保重置到默认模式
-        setChatMode('default');
+      // 若是全新空会话（无消息、无输入、默认模式、isNewSession=true）则不保存，避免覆盖旧状态
+      if (isNewSession && chatMode === 'default' && messages.length === 0 && inputValue.trim().length === 0) {
+        console.log('空白新会话，不保存状态');
+      } else if (chatMode !== 'default' || messages.length > 0 || inputValue.trim().length > 0) {
+        console.log('保存聊天状态:', {
+          messages,
+          selectedModel,
+          inputValue,
+          currentSessionId,
+          chatMode,
+          isNewSession
+        });
+        pageStateManager.savePageState('chat', {
+          messages,
+          selectedModel,
+          inputValue,
+          currentSessionId,
+          chatMode,
+          isNewSession
+        });
       }
     }
   };
+
+  // 监听 chatMode 变化，仅当用户从特殊模式主动切回 default 时，设置 specialModeClosed
+  const prevChatModeRef = useRef<ChatMode>('default');
+  useEffect(() => {
+    const prevMode = prevChatModeRef.current;
+    if (prevMode !== 'default' && chatMode === 'default') {
+      // 用户关闭了特殊模式
+      sessionStorage.setItem('specialModeClosed', 'true');
+      pageStateManager.clearPageState('chat');
+    }
+
+    if (chatMode !== 'default') {
+      sessionStorage.removeItem('specialModeClosed');
+    }
+
+    prevChatModeRef.current = chatMode;
+  }, [chatMode]);
 
   const restorePageState = () => {
     if (user) {
@@ -1133,10 +1064,20 @@ export default function Home() {
       const isNewChatSession = sessionStorage.getItem('newChatSession') === 'true';
       const fromOtherPage = sessionStorage.getItem('fromOtherPage') === 'true';
       const fromBackgroundPage = sessionStorage.getItem('fromBackgroundPage') === 'true';
+      const selectedHistoryId = sessionStorage.getItem('selectedHistoryId');
+      const isLoadingHistory = sessionStorage.getItem('loadingHistory') === 'true';
       
       console.log('isNewChatSession:', isNewChatSession);
       console.log('fromOtherPage:', fromOtherPage);
       console.log('fromBackgroundPage:', fromBackgroundPage);
+      console.log('selectedHistoryId:', selectedHistoryId);
+      console.log('isLoadingHistory:', isLoadingHistory);
+      
+      // 如果正在加载历史记录，跳过状态恢复
+      if (isLoadingHistory) {
+        console.log('正在加载历史记录，跳过状态恢复');
+        return;
+      }
       
       if (isNewChatSession) {
         // 如果是新建对话，保持新对话状态
@@ -1144,7 +1085,41 @@ export default function Home() {
         sessionStorage.removeItem('newChatSession');
         sessionStorage.removeItem('fromOtherPage');
         sessionStorage.removeItem('fromBackgroundPage');
+        sessionStorage.removeItem('selectedHistoryId');
         return;
+      }
+      
+      // 优先检查用户是否主动选择了历史记录
+      if (selectedHistoryId) {
+        console.log('检测到用户选择的历史记录ID:', selectedHistoryId);
+        const allHistories = getHistories();
+        const selectedHistory = allHistories.find(h => h.id === selectedHistoryId && h.type === 'chat');
+        
+        if (selectedHistory) {
+          console.log('恢复用户选择的历史记录');
+          // 检查是否已经是当前显示的历史记录，避免重复设置
+          if (currentSessionIdRef.current !== selectedHistory.id || messages.length !== selectedHistory.messages.length) {
+            setMessages(selectedHistory.messages || []);
+            setSelectedModel(selectedHistory.model || 'DeepSeek-R1-0528');
+            setCurrentSessionId(selectedHistory.id);
+            currentSessionIdRef.current = selectedHistory.id;
+            setChatMode('default');
+            setIsNewSession(false);
+            setIsLoading(false);
+            setStreamingMessage('');
+          }
+          
+          // 清除选择标记和其他标记
+          sessionStorage.removeItem('selectedHistoryId');
+          sessionStorage.removeItem('fromOtherPage');
+          sessionStorage.removeItem('fromBackgroundPage');
+          
+          console.log('=== 用户选择的历史记录恢复完成 ===');
+          return;
+        } else {
+          console.log('未找到用户选择的历史记录，清除标记');
+          sessionStorage.removeItem('selectedHistoryId');
+        }
       }
       
       // 尝试恢复页面状态（包括特殊模式）
@@ -1154,13 +1129,21 @@ export default function Home() {
       // 总是优先检查是否有特殊模式状态需要恢复
       if (savedState.chatMode && savedState.chatMode !== 'default') {
         console.log('恢复特殊模式状态:', savedState.chatMode);
-        setMessages(savedState.messages || []);
-        setSelectedModel(savedState.selectedModel || 'DeepSeek-R1-0528');
-        setInputValue(savedState.inputValue || '');
-        setCurrentSessionId(savedState.currentSessionId || '');
-        currentSessionIdRef.current = savedState.currentSessionId || '';
-        setIsNewSession(savedState.isNewSession ?? true);
-        setChatMode(savedState.chatMode);
+        // 检查是否需要更新状态，避免重复设置
+        if (
+          JSON.stringify(messages) !== JSON.stringify(savedState.messages || []) ||
+          selectedModel !== savedState.selectedModel ||
+          chatMode !== savedState.chatMode ||
+          currentSessionIdRef.current !== savedState.currentSessionId
+        ) {
+          setMessages(savedState.messages || []);
+          setSelectedModel(savedState.selectedModel || 'DeepSeek-R1-0528');
+          setInputValue(savedState.inputValue || '');
+          setCurrentSessionId(savedState.currentSessionId || '');
+          currentSessionIdRef.current = savedState.currentSessionId || '';
+          setIsNewSession(savedState.isNewSession ?? true);
+          setChatMode(savedState.chatMode);
+        }
         
         // 清除标记
         if (fromOtherPage) {
@@ -1173,39 +1156,71 @@ export default function Home() {
         return;
       }
       
-      // 只有在没有特殊模式状态时才考虑恢复历史记录或普通状态
+      // 只有在没有特殊模式状态且没有用户选择历史记录时才考虑自动恢复
       if (!fromOtherPage) {
-        // 如果不是从其他页面返回，尝试恢复历史记录
-        const allHistories = getHistories();
-        const chatHistories = allHistories.filter(h => h.type === 'chat');
-        
-        if (chatHistories.length > 0) {
-          console.log('恢复历史记录');
-          const latestChat = chatHistories[0]; // 历史记录按时间倒序排列
-          setMessages(latestChat.messages);
-          setSelectedModel(latestChat.model);
-          setCurrentSessionId(latestChat.id);
-          currentSessionIdRef.current = latestChat.id;
-          setChatMode('default'); // 历史记录默认为普通对话模式
-          setIsNewSession(false);
-          console.log('恢复最近的聊天历史记录:', latestChat.messages.length, '条消息');
-          return;
+        // 如果有保存的聊天状态且有当前会话ID，优先恢复它
+        if (savedState.messages && savedState.messages.length > 0 && savedState.currentSessionId) {
+          console.log('恢复保存的聊天状态');
+          // 检查是否需要更新状态，避免重复设置
+          if (
+            JSON.stringify(messages) !== JSON.stringify(savedState.messages) ||
+            selectedModel !== savedState.selectedModel ||
+            currentSessionIdRef.current !== savedState.currentSessionId
+          ) {
+            setMessages(savedState.messages || []);
+            setSelectedModel(savedState.selectedModel || 'DeepSeek-R1-0528');
+            setInputValue(savedState.inputValue || '');
+            setCurrentSessionId(savedState.currentSessionId || '');
+            currentSessionIdRef.current = savedState.currentSessionId || '';
+            setIsNewSession(savedState.isNewSession ?? true);
+            setChatMode(savedState.chatMode || 'default');
+          }
+          console.log('恢复聊天页面状态:', savedState);
+        } else {
+          // 最后才考虑恢复最新历史记录（只有在没有其他状态且消息为空时）
+          if (messages.length === 0 && !currentSessionIdRef.current) {
+            const allHistories = getHistories();
+            const chatHistories = allHistories.filter(h => h.type === 'chat');
+            
+            if (chatHistories.length > 0) {
+              console.log('恢复最新历史记录');
+              const latestChat = chatHistories[0]; // 历史记录按时间倒序排列
+              setMessages(latestChat.messages);
+              setSelectedModel(latestChat.model);
+              setCurrentSessionId(latestChat.id);
+              currentSessionIdRef.current = latestChat.id;
+              setChatMode('default'); // 历史记录默认为普通对话模式
+              setIsNewSession(false);
+              console.log('恢复最近的聊天历史记录:', latestChat.messages.length, '条消息');
+            } else {
+              console.log('没有可恢复的历史记录');
+            }
+          } else {
+            console.log('已有消息或会话，跳过自动恢复历史记录');
+          }
         }
-      }
-      
-      // 最后，如果有保存的聊天状态，恢复它
-      if (savedState.messages && savedState.messages.length > 0) {
-        console.log('恢复保存的聊天状态');
-        setMessages(savedState.messages || []);
-        setSelectedModel(savedState.selectedModel || 'DeepSeek-R1-0528');
-        setInputValue(savedState.inputValue || '');
-        setCurrentSessionId(savedState.currentSessionId || '');
-        currentSessionIdRef.current = savedState.currentSessionId || '';
-        setIsNewSession(savedState.isNewSession ?? true);
-        setChatMode(savedState.chatMode || 'default');
-        console.log('恢复聊天页面状态:', savedState);
       } else {
-        console.log('没有可恢复的状态，保持当前状态');
+        // 从其他页面返回，如果有保存的聊天状态，恢复它
+        if (savedState.messages && savedState.messages.length > 0) {
+          console.log('从其他页面返回，恢复保存的聊天状态');
+          // 检查是否需要更新状态，避免重复设置
+          if (
+            JSON.stringify(messages) !== JSON.stringify(savedState.messages) ||
+            selectedModel !== savedState.selectedModel ||
+            currentSessionIdRef.current !== savedState.currentSessionId
+          ) {
+            setMessages(savedState.messages || []);
+            setSelectedModel(savedState.selectedModel || 'DeepSeek-R1-0528');
+            setInputValue(savedState.inputValue || '');
+            setCurrentSessionId(savedState.currentSessionId || '');
+            currentSessionIdRef.current = savedState.currentSessionId || '';
+            setIsNewSession(savedState.isNewSession ?? true);
+            setChatMode(savedState.chatMode || 'default');
+          }
+          console.log('恢复聊天页面状态:', savedState);
+        } else {
+          console.log('从其他页面返回，没有可恢复的状态');
+        }
       }
       
       // 清除标记
@@ -1232,6 +1247,7 @@ export default function Home() {
     pageStateManager.clearPageState('chat');
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('newChatSession', 'true');
+      sessionStorage.removeItem('selectedHistoryId'); // 清除历史记录选择标记
     }
     toast({
       title: t('session.newChatStarted'),
@@ -1247,6 +1263,67 @@ export default function Home() {
     }
     router.push('/video');
   };
+
+  // 页面状态恢复的 useEffect - 优化触发时机
+  useEffect(() => {
+    // 清除之前的定时器
+    if (restoreTimeoutRef.current) {
+      clearTimeout(restoreTimeoutRef.current);
+    }
+
+    const now = Date.now();
+    // 防抖机制：500ms内只执行一次状态恢复
+    if (now - lastRestoreRef.current < 500) {
+      restoreTimeoutRef.current = setTimeout(() => {
+        lastRestoreRef.current = Date.now();
+        restorePageState();
+      }, 500);
+      return;
+    }
+
+    lastRestoreRef.current = now;
+    restorePageState();
+
+    return () => {
+      if (restoreTimeoutRef.current) {
+        clearTimeout(restoreTimeoutRef.current);
+      }
+    };
+  }, [user?.id]); // 只在用户ID变化时触发，避免频繁重新执行
+
+  // 页面卸载时保存状态 - 简化版本
+  useEffect(() => {
+    if (isHistoryRestored.current) return;
+    
+    const handleBeforeUnload = () => {
+      if (user) {
+        saveCurrentState();
+      }
+    };
+    
+    // 简化的页面可见性变化处理
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // 页面隐藏时，保存当前状态
+        console.log('页面隐藏，保存当前状态');
+        if (user) {
+          saveCurrentState();
+        }
+      }
+      // 移除复杂的页面可见时状态恢复逻辑，让新的统一恢复机制处理
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (user) {
+        saveCurrentState();
+      }
+    };
+  }, [user]);
 
   return (
     <Box height="100vh" minH="100vh" display="flex" flexDirection="column">
@@ -1502,10 +1579,10 @@ export default function Home() {
                   {/* 搜索历史记录 */}
                   {inputValue && searchHistory.length > 0 && (
                     <Box
-                    position="absolute"
+                      position="absolute"
                       bottom="100%"
                       left={4}
-                    right={4}
+                      right={4}
                       bg={useColorModeValue('white', 'gray.800')}
                       borderRadius="md"
                       boxShadow="lg"
@@ -1513,22 +1590,80 @@ export default function Home() {
                       maxH="200px"
                       overflowY="auto"
                       mb={2}
+                      border="1px"
+                      borderColor={useColorModeValue('gray.200', 'gray.600')}
                     >
+                      {/* 标题栏和关闭按钮 */}
+                      <Flex justify="space-between" align="center" mb={2} pb={2} borderBottom="1px" borderColor={useColorModeValue('gray.100', 'gray.700')}>
+                        <Text fontSize="sm" fontWeight="medium" color={useColorModeValue('gray.600', 'gray.300')}>
+                          历史输入记录
+                        </Text>
+                        <HStack spacing={1}>
+                          <Tooltip label="清除所有历史记录">
+                            <IconButton
+                              icon={<FiTrash2 />}
+                              aria-label="清除所有历史记录"
+                              size="xs"
+                              variant="ghost"
+                              colorScheme="red"
+                              onClick={() => {
+                                setSearchHistory([]);
+                                localStorage.removeItem('search_history');
+                                toast({
+                                  title: '历史记录已清除',
+                                  status: 'success',
+                                  duration: 2000,
+                                });
+                              }}
+                            />
+                          </Tooltip>
+                          <Tooltip label="关闭">
+                            <IconButton
+                              icon={<FaTimes />}
+                              aria-label="关闭历史记录"
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => setInputValue('')}
+                            />
+                          </Tooltip>
+                        </HStack>
+                      </Flex>
                       <VStack align="stretch" spacing={1}>
                         {searchHistory.map((item, index) => (
-                          <Button
-                            key={index}
-                            variant="ghost"
-                            justifyContent="flex-start"
-                            size="sm"
-                            onClick={() => setInputValue(item)}
-                          >
-                            {item}
-                          </Button>
+                          <Flex key={index} align="center" justify="space-between">
+                            <Button
+                              variant="ghost"
+                              justifyContent="flex-start"
+                              size="sm"
+                              flex={1}
+                              onClick={() => setInputValue(item)}
+                              textAlign="left"
+                              whiteSpace="nowrap"
+                              overflow="hidden"
+                              textOverflow="ellipsis"
+                            >
+                              {item}
+                            </Button>
+                            <Tooltip label="删除此记录">
+                              <IconButton
+                                icon={<FaTimes />}
+                                aria-label="删除此记录"
+                                size="xs"
+                                variant="ghost"
+                                colorScheme="red"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const updatedHistory = searchHistory.filter((_, i) => i !== index);
+                                  setSearchHistory(updatedHistory);
+                                  localStorage.setItem('search_history', JSON.stringify(updatedHistory));
+                                }}
+                              />
+                            </Tooltip>
+                          </Flex>
                         ))}
                       </VStack>
-                </Box>
-              )}
+                    </Box>
+                  )}
 
                   {/* 功能按钮 */}
                   <SimpleGrid

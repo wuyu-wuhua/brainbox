@@ -432,10 +432,10 @@ export default function History() {
     // 首次加载时获取历史记录
     const loadHistories = async () => {
       // 立即从本地获取历史记录并显示（快速响应）
-      const localHistories = getHistories();
-      setHistories(localHistories);
-      setLoading(false);
-      
+    const localHistories = getHistories();
+    setHistories(localHistories);
+    setLoading(false);
+
       try {
         // 异步获取合并后的历史记录（本地 + 数据库）
         const mergedHistories = await getHistoriesAsync();
@@ -474,14 +474,14 @@ export default function History() {
       setLoading(true);
       const success = await clearHistories();
       if (success) {
-        setHistories([]);
+    setHistories([]);
         setSelectedIds([]);
-        toast({
-          title: t('history.clearSuccess'),
-          status: 'success',
-          duration: 2000,
-        });
-        onClearAllClose();
+    toast({
+      title: t('history.clearSuccess'),
+      status: 'success',
+      duration: 2000,
+    });
+    onClearAllClose();
       } else {
         throw new Error(t('history.clearFailed'));
       }
@@ -504,11 +504,11 @@ export default function History() {
       if (success) {
         // 从本地状态中移除被删除的记录
         setHistories(prev => prev.filter(h => h.id !== id));
-        toast({
-          title: t('history.deleteSuccess'),
-          status: 'success',
-          duration: 2000,
-        });
+    toast({
+      title: t('history.deleteSuccess'),
+      status: 'success',
+      duration: 2000,
+    });
       } else {
         throw new Error(t('history.deleteFailed'));
       }
@@ -558,13 +558,13 @@ export default function History() {
       if (success) {
         // 从本地状态中移除被删除的记录
         setHistories(prev => prev.filter(h => !selectedIds.includes(h.id)));
-        setSelectedIds([]);
-        toast({
+    setSelectedIds([]);
+    toast({
           title: t('history.batchDeleteSuccess'),
-          status: 'success',
-          duration: 2000,
-        });
-        onBatchDeleteClose();
+      status: 'success',
+      duration: 2000,
+    });
+    onBatchDeleteClose();
       } else {
         throw new Error(t('history.batchDeleteFailed'));
       }
@@ -586,6 +586,24 @@ export default function History() {
   };
 
   const handleNavigateToHistory = (history: ChatHistory) => {
+    // 如果是视频类型且是 Google Veo 3 模型,优先处理这种情况
+    if (history.type === 'video' && (history.model.includes('Google Veo 3') || history.model.includes('DashScope'))) {
+      const userMessage = history.messages[0]?.content || '';
+      const motionStrength = history.messages[0]?.metadata?.motionStrength || 0.7;
+      // 无论从哪个页面点击,都直接跳转到 Google Veo 3 页面
+      router.push({
+        pathname: '/video',
+        query: { 
+          loadHistory: history.id,
+          prompt: userMessage,
+          modelType: 'gen3',
+          motionStrength
+        }
+      });
+      return; // 提前返回,不执行后面的逻辑
+    }
+
+    // 其他类型的历史记录处理
     if (history.type === 'chat') {
       // 普通对话类型跳转到首页
       if (router.pathname === '/') {
@@ -616,6 +634,7 @@ export default function History() {
         }
       });
     } else if (history.type === 'video') {
+      // 处理普通视频类型(非 Google Veo 3)
       const userMessage = history.messages[0]?.content || '';
       router.push({
         pathname: '/video',
