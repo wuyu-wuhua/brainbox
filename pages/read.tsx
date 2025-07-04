@@ -259,6 +259,25 @@ export default function Read() {
         setSelectedFile(file);
         
         try {
+          // 检查文件大小
+          if (file.size > 50 * 1024 * 1024) {
+            toast({
+              title: '文件过大',
+              description: '仅支持文件大小不超过50MB，超出将无法预览或分析',
+              status: 'warning',
+              duration: 3000,
+            });
+            setSelectedFile(null);
+            setDocumentContent('');
+            setPreviewText('');
+            setCurrentDocument(null);
+            if (fileInputRef.current) {
+              fileInputRef.current.value = '';
+            }
+            setIsFileProcessing(false);
+            return;
+          }
+          
           // 使用后端API提取文档文本内容
           const extractedText = await extractTextFromFile(file);
           const cleanContent = extractedText.trim();
@@ -385,18 +404,6 @@ export default function Read() {
 
       const cleanContent = data.text.trim();
       
-      // 检查文档长度（假设平均每页2000字符）
-      const estimatedPages = Math.ceil(cleanContent.length / 2000);
-      if (estimatedPages > 10) {
-        toast({
-          title: t('read.onlySupport10Pages'),
-          status: 'warning',
-          duration: 3000,
-        });
-        setUrlInput('');
-        return;
-      }
-
       // 重置会话状态，创建新的历史记录
       setChatMessages([]);
       setAnalysisStarted(false);
@@ -446,18 +453,6 @@ export default function Read() {
     
     try {
       const cleanContent = textInput.trim();
-      
-      // 检查文档长度（假设平均每页2000字符）
-      const estimatedPages = Math.ceil(cleanContent.length / 2000);
-      if (estimatedPages > 10) {
-        toast({
-          title: t('read.onlySupport10Pages'),
-          status: 'warning',
-          duration: 3000,
-        });
-        setTextInput('');
-        return;
-      }
       
       // 重置会话状态，创建新的历史记录
       setChatMessages([]);

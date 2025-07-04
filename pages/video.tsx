@@ -1296,42 +1296,42 @@ export default function Video() {
 
   // 禁止任何模式切换、路由变化等副作用自动恢复历史，只允许明确带loadHistory参数时恢复
   useEffect(() => {
-    const { loadHistory } = router.query;
-    if (loadHistory && typeof loadHistory === 'string') {
-      const restoreHistory = async () => {
+    const { loadHistory, modelType } = router.query;
+    
+    const restoreHistory = async () => {
+      // 只在明确有历史记录需要恢复时才处理
+      if (loadHistory && typeof loadHistory === 'string') {
         const histories = await getHistories();
         const targetHistory = histories.find(h => h.id === loadHistory);
         if (targetHistory && targetHistory.type === 'video') {
-          if (targetHistory.model && targetHistory.model.startsWith('Google Veo 3')) {
-            setModelType('gen3');
-            // 恢复gen3参数、对话、视频
+          // 支持通过modelType参数强制切换gen3
+          if ((targetHistory.model && targetHistory.model.includes('Google Veo 3')) || modelType === 'gen3') {
+            setModelType('gen3'); // 自动切换到gen3
+            console.log('恢复DashScope历史记录:', targetHistory);
+            // 恢复对话消息
             if (targetHistory.messages && targetHistory.messages.length > 0) {
-              const messagesWithVideoUrl = targetHistory.messages.map(msg => ({
-                ...msg,
-                videoUrl: (msg as any).videoUrl
-              }));
-              setGen3Messages(messagesWithVideoUrl);
+              // 优先补全videoUrl
+              let videoUrl = (targetHistory.messages[1] as any)?.videoUrl;
+              if (!videoUrl && targetHistory.messages[1]?.metadata?.videoUrl) {
+                videoUrl = targetHistory.messages[1].metadata.videoUrl;
+              }
+              if (!videoUrl && targetHistory.messages[1]?.content?.includes('http')) {
+                const match = targetHistory.messages[1].content.match(/https?:\/\/[^\s)]+\.mp4/);
+                if (match) videoUrl = match[0];
+              }
+              const patchedMessages = targetHistory.messages.map((msg, idx) =>
+                idx === 1 && videoUrl ? { ...msg, videoUrl } : msg
+              );
+              setGen3Messages(patchedMessages);
+              if (videoUrl) setGen3GeneratedVideo(videoUrl);
             }
+            // 恢复参数
             if (targetHistory.messages.length > 1 && targetHistory.messages[1].metadata) {
               const metadata = targetHistory.messages[1].metadata as any;
               if (metadata.aspectRatio) setGen3AspectRatio(metadata.aspectRatio);
               if (metadata.cameraMovement) setGen3CameraMovement(metadata.cameraMovement);
               if (metadata.speed) setGen3Speed(metadata.speed);
               if (metadata.lighting) setGen3Lighting(metadata.lighting);
-            }
-            if (targetHistory.messages.length > 1 && (targetHistory.messages[1] as any).videoUrl) {
-              setGen3GeneratedVideo((targetHistory.messages[1] as any).videoUrl);
-              // 补充到gen3Messages[1].videoUrl，确保页面能渲染
-              const patchedMessages = targetHistory.messages.map((msg, idx) =>
-                idx === 1 ? { ...msg, videoUrl: (targetHistory.messages[1] as any).videoUrl } : msg
-              );
-              setGen3Messages(patchedMessages);
-            }
-            const gen3State = localStorage.getItem('gen3_state_backup');
-            if (gen3State) {
-              const state = JSON.parse(gen3State);
-              setGen3IsGenerating(state.gen3IsGenerating || false);
-              setGen3Progress(state.gen3Progress || 0);
             }
           } else if (targetHistory.model && targetHistory.model.startsWith('图生视频')) {
             setModelType('regular');
@@ -1347,12 +1347,10 @@ export default function Video() {
             restoreVideoFromHistory(targetHistory);
           }
         }
-      };
-      restoreHistory();
-    }
-    // 只依赖router.query.loadHistory，其他情况绝不自动恢复
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.query?.loadHistory]);
+      }
+    };
+    restoreHistory();
+  }, [router.query?.loadHistory, router.query?.modelType]);
 
   // 🎯 模式切换恢复逻辑：当切换到Gen3模式时，确保显示对话记录
   // useEffect(() => {
@@ -1834,7 +1832,7 @@ export default function Video() {
                 // 视频生成完成
                 // 创建AI回复消息
                 const aiMessage = {
-                  content: ``,
+                  content: '',
                   isUser: false,
                   timestamp: new Date().toISOString(),
                   videoUrl: videoUrl,
@@ -1943,7 +1941,7 @@ export default function Video() {
           
           // 创建AI回复消息
           const aiMessage = {
-                            content: ``,
+            content: '',
             isUser: false,
             timestamp: new Date().toISOString(),
             videoUrl: data.videoUrl,
