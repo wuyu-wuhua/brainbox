@@ -282,15 +282,25 @@ export default function Home() {
         sessionStorage.setItem('selectedHistoryId', targetHistory.id);
       }
       pageStateManager.clearPageState('chat');
+      // 恢复历史记录时，自动切换到对应特殊模式
+      let restoredMode: ChatMode = 'default';
+      if (targetHistory.model && [
+        '帮我写作', '快速翻译', '旅游规划', '影视剧本'
+      ].some(modeName => targetHistory.model.includes(modeName))) {
+        if (targetHistory.model.includes('帮我写作')) restoredMode = 'write';
+        else if (targetHistory.model.includes('快速翻译')) restoredMode = 'translate';
+        else if (targetHistory.model.includes('旅游规划')) restoredMode = 'travel';
+        else if (targetHistory.model.includes('影视剧本')) restoredMode = 'script';
+      }
       setMessages(targetHistory.messages);
       setSelectedModel(targetHistory.model || 'DeepSeek-R1-0528');
-      setChatMode('default');
+      setChatMode(restoredMode as ChatMode);
       setIsLoading(false);
       setStreamingMessage('');
       setIsNewSession(false);
       setCurrentSessionId(targetHistory.id);
       currentSessionIdRef.current = targetHistory.id;
-      isHistoryRestored.current = true; // 标记已还原历史
+      isHistoryRestored.current = true;
       console.log('设置完成，当前会话ID:', targetHistory.id);
       console.log('当前消息数量:', targetHistory.messages.length);
       setTimeout(() => {
