@@ -1302,10 +1302,9 @@ export default function Video() {
         const histories = await getHistories();
         const targetHistory = histories.find(h => h.id === loadHistory);
         if (targetHistory && targetHistory.type === 'video') {
-          // Google Veo 3
-          if (targetHistory.model && targetHistory.model.includes('Google Veo 3')) {
+          if (targetHistory.model && targetHistory.model.startsWith('Google Veo 3')) {
             setModelType('gen3');
-            // ...已有的gen3恢复逻辑...
+            // 恢复gen3参数、对话、视频
             if (targetHistory.messages && targetHistory.messages.length > 0) {
               const messagesWithVideoUrl = targetHistory.messages.map(msg => ({
                 ...msg,
@@ -1322,6 +1321,11 @@ export default function Video() {
             }
             if (targetHistory.messages.length > 1 && (targetHistory.messages[1] as any).videoUrl) {
               setGen3GeneratedVideo((targetHistory.messages[1] as any).videoUrl);
+              // 补充到gen3Messages[1].videoUrl，确保页面能渲染
+              const patchedMessages = targetHistory.messages.map((msg, idx) =>
+                idx === 1 ? { ...msg, videoUrl: (targetHistory.messages[1] as any).videoUrl } : msg
+              );
+              setGen3Messages(patchedMessages);
             }
             const gen3State = localStorage.getItem('gen3_state_backup');
             if (gen3State) {
@@ -1329,10 +1333,17 @@ export default function Video() {
               setGen3IsGenerating(state.gen3IsGenerating || false);
               setGen3Progress(state.gen3Progress || 0);
             }
-          } else {
-            // 常规模型 regular
+          } else if (targetHistory.model && targetHistory.model.startsWith('图生视频')) {
             setModelType('regular');
-            // 直接调用restoreVideoFromHistory，确保generatedVideo等全部恢复
+            setMode('img2video');
+            restoreVideoFromHistory(targetHistory);
+          } else if (targetHistory.model && targetHistory.model.startsWith('文生视频')) {
+            setModelType('regular');
+            setMode('text2video');
+            restoreVideoFromHistory(targetHistory);
+          } else {
+            // fallback
+            setModelType('regular');
             restoreVideoFromHistory(targetHistory);
           }
         }
@@ -1423,8 +1434,26 @@ export default function Video() {
             }
             
             // 恢复生成的视频
-            if (targetHistory.messages.length > 1 && (targetHistory.messages[1] as any).videoUrl) {
-              setGen3GeneratedVideo((targetHistory.messages[1] as any).videoUrl);
+            if (targetHistory.messages.length > 1) {
+              // 优先videoUrl字段，其次metadata.videoUrl，其次content里提取
+              let videoUrl = (targetHistory.messages[1] as any).videoUrl;
+              if (!videoUrl && targetHistory.messages[1].metadata && targetHistory.messages[1].metadata.videoUrl) {
+                videoUrl = targetHistory.messages[1].metadata.videoUrl;
+              }
+              if (!videoUrl && targetHistory.messages[1].content && targetHistory.messages[1].content.includes('http')) {
+                const match = targetHistory.messages[1].content.match(/https?:\/\/[^\s)]+\.mp4/);
+                if (match) videoUrl = match[0];
+              }
+              if (videoUrl) {
+                setGen3GeneratedVideo(videoUrl);
+                // 补充到gen3Messages[1].videoUrl，确保页面能渲染
+                const patchedMessages = targetHistory.messages.map((msg, idx) =>
+                  idx === 1 ? { ...msg, videoUrl } : msg
+                );
+                setGen3Messages(patchedMessages);
+              } else {
+                setGen3Messages(targetHistory.messages);
+              }
             }
           }
         }
@@ -2076,7 +2105,15 @@ export default function Video() {
                   <Heading size="md" color="white">
                     {t('video.googleVeo3Chat')}
                   </Heading>
-                  <Text fontSize="sm" color="purple.200" fontWeight="bold" ml={3}>{t('credits.consume')}1250{t('credits.credits')}</Text>
+                  {getUserQuota('video') !== Infinity ? (
+                    <Text fontSize="sm" color="purple.200" fontWeight="bold" ml={3}>
+                      {t('credits.remainingFreeVideos')} {getRemainingFreeQuota('video')}/{getUserQuota('video')}
+                    </Text>
+                  ) : (
+                    <Text fontSize="sm" color="purple.200" fontWeight="bold" ml={3}>
+                      {t('credits.consume')}1250{t('credits.credits')}
+                    </Text>
+                  )}
                 </HStack>
                 {gen3Messages.length > 0 && (
                   <Button
@@ -2516,7 +2553,9 @@ export default function Video() {
                       />
                       {gen3Prompt.trim() && (
                         <Text fontSize="sm" color="purple.500" fontWeight="bold" ml={2} minW="90px">
-                          {t('credits.consume')}1250{t('credits.credits')}
+                          {getUserQuota('video') !== Infinity
+                            ? `${t('credits.remainingFreeVideos')} ${getRemainingFreeQuota('video')}/${getUserQuota('video')}`
+                            : `${t('credits.consume')}1250${t('credits.credits')}`}
                         </Text>
                       )}
                     </HStack>
@@ -3139,7 +3178,13 @@ export default function Video() {
     }
   };
 
-
+  // 在Video组件useEffect中，优先根据query.modelType切换模型
+  useEffect(() => {
+    if (router.query.modelType === 'gen3') {
+      setModelType('gen3');
+      localStorage.setItem('video_model_type', 'gen3');
+    }
+  }, [router.query.modelType]);
 
   return (
     <Box w="100%" maxW="100vw" overflow="hidden">
@@ -3294,7 +3339,9 @@ export default function Video() {
                       >
                         {t('video.generateVideo')}
                         <Text as="span" fontSize="sm" fontWeight="bold" ml={2} px={3} py={0.5} borderRadius="full" bgGradient="linear(to-r, purple.400, purple.600)" color="white" display="inline-block">
-                          {isFreeUser ? `${t('credits.remainingFreeVideos')} ${freeQuota - freeUsed}/${freeQuota}` : `${t('credits.consume')}${creditCost}${t('credits.credits')}`}
+                          {getUserQuota('video') !== Infinity
+                            ? `${t('credits.remainingFreeVideos')} ${getRemainingFreeQuota('video')}/${getUserQuota('video')}`
+                            : `${t('credits.consume')}${creditCost}${t('credits.credits')}`}
                         </Text>
                       </Button>
                       
@@ -3574,7 +3621,9 @@ export default function Video() {
                       >
                         {t('video.generateVideo')}
                         <Text as="span" fontSize="sm" fontWeight="bold" ml={2} px={3} py={0.5} borderRadius="full" bgGradient="linear(to-r, purple.400, purple.600)" color="white" display="inline-block">
-                          {isFreeUser ? `${t('credits.remainingFreeVideos')} ${freeQuota - freeUsed}/${freeQuota}` : `${t('credits.consume')}${creditCost}${t('credits.credits')}`}
+                          {getUserQuota('video') !== Infinity
+                            ? `${t('credits.remainingFreeVideos')} ${getRemainingFreeQuota('video')}/${getUserQuota('video')}`
+                            : `${t('credits.consume')}${creditCost}${t('credits.credits')}`}
                         </Text>
                       </Button>
                       

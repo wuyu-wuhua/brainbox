@@ -127,7 +127,7 @@ const HistoryCard = ({ history, onDelete, onNavigate, onRename, isSelected, onSe
   const getVideoUrl = () => {
     if (history.type === 'video' && history.messages.length > 1) {
       const aiMsg = history.messages[1];
-      // 优先从videoUrl字段读取
+      // 优先从videoUrl字段读取（兼容Google Veo 3）
       if (aiMsg.videoUrl) {
         return aiMsg.videoUrl;
       }
