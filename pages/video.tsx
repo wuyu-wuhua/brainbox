@@ -85,7 +85,7 @@ import { saveHistory, getHistories } from '../utils/storage';
 import { pageStateManager } from '../utils/pageState';
 import { ChatHistory } from '../types/chat';
 import { useRouter } from 'next/router';
-import { videoService, getVideoState, saveVideoState, clearVideoState, isVideoStateExpired } from '../services/videoService';
+import { videoService, getVideoState, saveVideoState, clearVideoState, isVideoStateExpired, VideoGenerationState } from '../services/videoService';
 
 const StylePreview = ({ style, isSelected }) => {
   const videoRef = useRef(null);
@@ -444,9 +444,19 @@ export default function Video() {
     };
 
     const handleRouteChange = () => {
-      if (user) {
-        saveCurrentState();
-        sessionStorage.setItem('fromOtherPage', 'true');
+      if (isGenerating && currentTaskId) {
+        // 保存当前状态
+        saveVideoState({
+          taskId: currentTaskId,
+          status: 'generating',
+          progress,
+          timestamp: Date.now(),
+          prompt,
+          style: videoStyle,
+          aspectRatio,
+          type: mode,
+          referenceImage: mode === 'img2video' ? referenceImage : null
+        } as VideoGenerationState);
       }
     };
 
@@ -461,7 +471,7 @@ export default function Video() {
         sessionStorage.setItem('fromOtherPage', 'true');
       }
     };
-  }, [user, prompt, videoStyle, aspectRatio, duration, mode, referenceImage, motionStrength, generatedVideo, isFavorited, router.events]);
+  }, [user, prompt, videoStyle, aspectRatio, duration, mode, referenceImage, motionStrength, generatedVideo, isFavorited, router.events, currentTaskId, progress]);
 
   const startNewVideo = () => {
     setPrompt('');
@@ -481,6 +491,14 @@ export default function Video() {
     });
   };
 
+  const dataURLtoBlob = (dataurl: string) => {
+    const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      u8arr[i] = bstr.charCodeAt(i);
+    }
+    return new Blob([u8arr], { type: mime });
+  };
+
   const handleGenerate = async () => {
     // 未登录用户每次点击生成都弹出登录框
     if (!user) {
@@ -492,6 +510,18 @@ export default function Video() {
         duration: 3000,
         isClosable: true,
       });
+      return;
+    }
+
+    // 新增：图生视频必须有服务器图片URL
+    if (mode === 'img2video' && (!referenceImage || !(referenceImage.startsWith('data:image/') || referenceImage.startsWith('http://') || referenceImage.startsWith('https://')))) {
+      toast({
+        title: '请先上传参考图片',
+        description: '请等待图片上传成功后再生成视频',
+        status: 'warning',
+        duration: 3000,
+      });
+      setIsGenerating(false);
       return;
     }
 
@@ -551,6 +581,27 @@ export default function Video() {
         });
       }, 2000);
 
+      let finalReferenceImage = referenceImage;
+      if (mode === 'img2video' && referenceImage && referenceImage.startsWith('data:image/')) {
+        const formData = new FormData();
+        formData.append('file', dataURLtoBlob(referenceImage), 'reference.png');
+        try {
+          const uploadRes = await fetch('/api/upload-image', { method: 'POST', body: formData });
+          const uploadData = await uploadRes.json();
+          if (uploadData.success && uploadData.url) {
+            finalReferenceImage = uploadData.url;
+          } else {
+            toast({ title: '图片上传失败', status: 'error', duration: 3000 });
+            setIsGenerating(false);
+            return;
+          }
+        } catch (e) {
+          toast({ title: '图片上传失败', status: 'error', duration: 3000 });
+          setIsGenerating(false);
+          return;
+        }
+      }
+
       // 调用视频生成API
       const response = await fetch('/api/generate-video', {
         method: 'POST',
@@ -559,11 +610,11 @@ export default function Video() {
         },
         body: JSON.stringify({
           prompt: prompt.trim(),
-          model: videoStyle, // 修复：使用 model 而不是 style
+          model: videoStyle,
           aspectRatio,
           duration,
           mode,
-          referenceImage: mode === 'img2video' ? referenceImage : null,
+          img_url: mode === 'img2video' ? finalReferenceImage : null,
           motionStrength: mode === 'img2video' ? motionStrength : null,
         }),
       });
@@ -653,7 +704,7 @@ export default function Video() {
                 ? `图生视频-${videoStyle}-${aspectRatio}-${duration}s`
                 : `文生视频-${videoStyle}-${aspectRatio}-${duration}s`;
 
-              saveHistory(messages, historyModel, 'video');
+              await saveHistory(messages, historyModel, 'video');
 
               toast({
                 title: '视频生成成功！',
@@ -746,7 +797,7 @@ export default function Video() {
           ? `图生视频-${videoStyle}-${aspectRatio}-${duration}s`
           : `文生视频-${videoStyle}-${aspectRatio}-${duration}s`;
 
-        saveHistory(messages, historyModel, 'video');
+        await saveHistory(messages, historyModel, 'video');
 
         toast({
           title: '视频生成成功！',
@@ -1082,6 +1133,22 @@ export default function Video() {
     // 在Gen3VideoPage组件内增加风格状态
     const [gen3VideoStyle, setGen3VideoStyle] = useState('realistic');
     
+    useEffect(() => {
+      if (modelType === 'gen3') {
+        // 恢复gen3进度条和生成状态
+        const gen3State = localStorage.getItem('gen3_state_backup');
+        if (gen3State) {
+          const state = JSON.parse(gen3State);
+          setGen3IsGenerating(state.gen3IsGenerating || false);
+          setGen3Progress(state.gen3Progress || 0);
+          setGen3GeneratedVideo(state.gen3GeneratedVideo || null);
+          if (state.gen3Messages && state.gen3Messages.length > 0) {
+            setGen3Messages(state.gen3Messages);
+          }
+        }
+      }
+    }, [modelType]);
+
     // 对话消息状态 - 从localStorage恢复
     const [gen3Messages, setGen3Messages] = useState<Array<{
       content: string;
@@ -1234,26 +1301,39 @@ export default function Video() {
       const restoreHistory = async () => {
         const histories = await getHistories();
         const targetHistory = histories.find(h => h.id === loadHistory);
-        if (targetHistory && targetHistory.type === 'video' && (targetHistory.model.includes('Google Veo 3') || targetHistory.model.includes('DashScope'))) {
-          // 恢复对话消息
-          if (targetHistory.messages && targetHistory.messages.length > 0) {
-            const messagesWithVideoUrl = targetHistory.messages.map(msg => ({
-              ...msg,
-              videoUrl: (msg as any).videoUrl
-            }));
-            setGen3Messages(messagesWithVideoUrl);
-          }
-          // 恢复参数
-          if (targetHistory.messages.length > 1 && targetHistory.messages[1].metadata) {
-            const metadata = targetHistory.messages[1].metadata as any;
-            if (metadata.aspectRatio) setGen3AspectRatio(metadata.aspectRatio);
-            if (metadata.cameraMovement) setGen3CameraMovement(metadata.cameraMovement);
-            if (metadata.speed) setGen3Speed(metadata.speed);
-            if (metadata.lighting) setGen3Lighting(metadata.lighting);
-          }
-          // 恢复生成的视频
-          if (targetHistory.messages.length > 1 && (targetHistory.messages[1] as any).videoUrl) {
-            setGen3GeneratedVideo((targetHistory.messages[1] as any).videoUrl);
+        if (targetHistory && targetHistory.type === 'video') {
+          // Google Veo 3
+          if (targetHistory.model && targetHistory.model.includes('Google Veo 3')) {
+            setModelType('gen3');
+            // ...已有的gen3恢复逻辑...
+            if (targetHistory.messages && targetHistory.messages.length > 0) {
+              const messagesWithVideoUrl = targetHistory.messages.map(msg => ({
+                ...msg,
+                videoUrl: (msg as any).videoUrl
+              }));
+              setGen3Messages(messagesWithVideoUrl);
+            }
+            if (targetHistory.messages.length > 1 && targetHistory.messages[1].metadata) {
+              const metadata = targetHistory.messages[1].metadata as any;
+              if (metadata.aspectRatio) setGen3AspectRatio(metadata.aspectRatio);
+              if (metadata.cameraMovement) setGen3CameraMovement(metadata.cameraMovement);
+              if (metadata.speed) setGen3Speed(metadata.speed);
+              if (metadata.lighting) setGen3Lighting(metadata.lighting);
+            }
+            if (targetHistory.messages.length > 1 && (targetHistory.messages[1] as any).videoUrl) {
+              setGen3GeneratedVideo((targetHistory.messages[1] as any).videoUrl);
+            }
+            const gen3State = localStorage.getItem('gen3_state_backup');
+            if (gen3State) {
+              const state = JSON.parse(gen3State);
+              setGen3IsGenerating(state.gen3IsGenerating || false);
+              setGen3Progress(state.gen3Progress || 0);
+            }
+          } else {
+            // 常规模型 regular
+            setModelType('regular');
+            // 直接调用restoreVideoFromHistory，确保generatedVideo等全部恢复
+            restoreVideoFromHistory(targetHistory);
           }
         }
       };
@@ -1320,7 +1400,8 @@ export default function Video() {
         if (loadHistory && typeof loadHistory === 'string') {
           const histories = await getHistories();
           const targetHistory = histories.find(h => h.id === loadHistory);
-          if (targetHistory && targetHistory.type === 'video' && (targetHistory.model.includes('Google Veo 3') || targetHistory.model.includes('DashScope'))) {
+          if (targetHistory && targetHistory.type === 'video' && targetHistory.model && targetHistory.model.includes('Google Veo 3')) {
+            setModelType('gen3'); // 自动切换到gen3
             console.log('恢复DashScope历史记录:', targetHistory);
             
             // 恢复对话消息
@@ -1789,7 +1870,7 @@ export default function Video() {
                 
                 const historyMessages = [finalUserMessage, aiMessage];
                 const historyModel = `Google Veo 3-文生视频-${gen3AspectRatio}-5s`;
-                saveHistory(historyMessages, historyModel, 'video');
+                await saveHistory(historyMessages, historyModel, 'video');
                 
                 return true; // 完成
               } else if (taskStatus === 'FAILED') {
@@ -1904,7 +1985,7 @@ export default function Video() {
           
           const historyMessages = [finalUserMessage, aiMessage];
           const historyModel = `Google Veo 3-文生视频-${gen3AspectRatio}-5s`;
-          saveHistory(historyMessages, historyModel, 'video');
+          await saveHistory(historyMessages, historyModel, 'video');
         } else {
           throw new Error(data.error || data.details || '视频生成失败');
         }
@@ -2601,7 +2682,7 @@ export default function Video() {
       
       // 如果有正在进行的任务，继续轮询状态
       if (savedState.status === 'generating' && savedState.taskId) {
-        pollVideoStatus(savedState.taskId);
+        checkAndUpdateVideoStatus(savedState.taskId);
       }
     } else if (savedState) {
       // 如果状态已过期，清除它
@@ -2614,7 +2695,6 @@ export default function Video() {
     try {
       const response = await videoService.checkVideoStatus(taskId);
       const status = response.output.task_status;
-      
       // 更新进度
       let currentProgress = 0;
       if (status === 'PENDING') {
@@ -2624,20 +2704,20 @@ export default function Video() {
       } else if (status === 'SUCCEEDED') {
         currentProgress = 100;
       }
-      
       setGeneratingProgress(currentProgress);
-      
-      // 保存当前状态
+      // 获取之前的状态用于补全字段
+      const prevState = getVideoState();
       saveVideoState({
         taskId,
-        status: status.toLowerCase() as any,
+        status: status.toLowerCase() as 'pending' | 'generating' | 'completed' | 'failed',
         progress: currentProgress,
         timestamp: Date.now(),
-        prompt: '', // 从之前的状态中获取
-        style: '',
-        aspectRatio: ''
+        prompt: prevState?.prompt || prompt || '',
+        style: prevState?.style || videoStyle || '',
+        aspectRatio: prevState?.aspectRatio || aspectRatio || '1:1',
+        type: prevState?.type || mode || 'text2video',
+        referenceImage: prevState?.referenceImage || referenceImage || null
       });
-
       if (status === 'SUCCEEDED') {
         setIsGenerating(false);
         clearVideoState();
@@ -2680,10 +2760,12 @@ export default function Video() {
           status: 'generating',
           progress,
           timestamp: Date.now(),
-          prompt: '', // 从组件状态中获取
-          style: '',
-          aspectRatio: ''
-        });
+          prompt,
+          style: videoStyle,
+          aspectRatio,
+          type: mode,
+          referenceImage: mode === 'img2video' ? referenceImage : null
+        } as VideoGenerationState);
       }
     };
 
@@ -2691,7 +2773,373 @@ export default function Video() {
     return () => {
       router.events.off('routeChangeStart', handleRouteChange);
     };
-  }, [isGenerating, currentTaskId, progress]);
+  }, [isGenerating, currentTaskId, progress, mode, referenceImage, videoStyle, aspectRatio]);
+
+  // 保存视频状态到本地存储和历史记录
+  const saveVideoToHistory = async (videoUrl: string, taskId: string, type: 'text2video' | 'img2video' = 'text2video', currentPrompt: string = '') => {
+    try {
+      // 保存到历史记录
+      const history = {
+        type: 'video',
+        model: modelType === 'gen3' ? 'Google Veo 3' : 'DashScope',
+        messages: [
+          {
+            content: prompt,
+            isUser: true,
+            timestamp: new Date().toISOString()
+          },
+          {
+            content: videoUrl,
+            isUser: false,
+            timestamp: new Date().toISOString(),
+            metadata: {
+              taskId,
+              type,
+              referenceImage: type === 'img2video' ? referenceImage : null,
+              style: videoStyle,
+              aspectRatio,
+              duration
+            }
+          }
+        ]
+      };
+      
+      await saveHistory(history.messages, history.model, 'video');
+      
+      // 保存视频状态
+      saveVideoState({
+        taskId,
+        prompt,
+        style: videoStyle,
+        aspectRatio,
+        status: 'completed',
+        progress: 100,
+        result: { videoUrl },
+        timestamp: Date.now(),
+        type,
+        referenceImage: type === 'img2video' ? referenceImage : null
+      });
+    } catch (error) {
+      console.error('保存视频历史记录失败:', error);
+    }
+  };
+
+  // 从历史记录恢复视频状态
+  const restoreVideoFromHistory = async (history: any) => {
+    try {
+      if (history.messages && history.messages.length >= 2) {
+        const userMessage = history.messages[0];
+        const assistantMessage = history.messages[1];
+        const metadata = assistantMessage.metadata || {};
+        setPrompt(userMessage.content);
+        // 修复：优先从metadata.videoUrl、assistantMessage.videoUrl、content中提取视频链接
+        let videoUrl = '';
+        if (metadata.videoUrl) {
+          videoUrl = metadata.videoUrl;
+        } else if (assistantMessage.videoUrl) {
+          videoUrl = assistantMessage.videoUrl;
+        } else if (assistantMessage.content && assistantMessage.content.includes('http')) {
+          const match = assistantMessage.content.match(/https?:\/\/[\S]+\.mp4/);
+          if (match) videoUrl = match[0];
+        }
+        // 修复：如果是外链，包一层代理
+        if (videoUrl) {
+          if (!videoUrl.startsWith('/') && !videoUrl.startsWith('blob:') && !videoUrl.startsWith('/api/video-proxy')) {
+            setGeneratedVideo(`/api/video-proxy?url=${encodeURIComponent(videoUrl)}`);
+          } else {
+            setGeneratedVideo(videoUrl);
+          }
+        } else {
+          setGeneratedVideo(null);
+        }
+        if (metadata.type === 'img2video' && metadata.referenceImage) {
+          setMode('img2video');
+          setReferenceImage(metadata.referenceImage);
+        }
+        if (metadata.style) {
+          setVideoStyle(metadata.style);
+        }
+        if (metadata.aspectRatio) {
+          setAspectRatio(metadata.aspectRatio);
+        }
+        if (metadata.duration) {
+          setDuration(metadata.duration);
+        }
+      }
+    } catch (error) {
+      console.error('恢复视频状态失败:', error);
+    }
+  };
+
+  // 修改轮询视频状态的函数
+  const checkAndUpdateVideoStatus = async (taskId: string) => {
+  try {
+    const response = await videoService.checkVideoStatus(taskId);
+    const status = response.output.task_status;
+    
+    // 更新进度
+    let currentProgress = 0;
+    if (status === 'PENDING') {
+      currentProgress = 20;
+    } else if (status === 'RUNNING') {
+      currentProgress = 60;
+    } else if (status === 'SUCCEEDED') {
+      currentProgress = 100;
+      
+      // 获取生成的视频URL
+      const videoUrl = response.output.video_url || response.output.results?.[0]?.video_url;
+      if (videoUrl) {
+        setGeneratedVideo(videoUrl);
+        // 保存到历史记录和状态
+        await saveVideoToHistory(videoUrl, taskId, mode, prompt || '');
+      }
+      
+      setIsGenerating(false);
+      clearVideoState();
+    } else if (status === 'FAILED') {
+      setIsGenerating(false);
+      clearVideoState();
+      toast({
+        title: '视频生成失败',
+        description: response.output.error_message || '未知错误',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } else {
+      // 继续轮询
+      setTimeout(() => checkAndUpdateVideoStatus(taskId), 3000);
+    }
+    
+    setProgress(currentProgress);
+    
+    // 保存当前状态
+    saveVideoState({
+      taskId,
+      prompt,
+      style: videoStyle,
+      aspectRatio,
+      status: status.toLowerCase() as 'pending' | 'generating' | 'completed' | 'failed',
+      progress: currentProgress,
+      timestamp: Date.now(),
+      type: mode,
+      referenceImage: mode === 'img2video' ? referenceImage : null
+    });
+  } catch (error) {
+    console.error('检查视频状态失败:', error);
+    setIsGenerating(false);
+    clearVideoState();
+    toast({
+      title: '检查视频状态失败',
+      description: '请稍后重试',
+      status: 'error',
+      duration: 5000,
+      isClosable: true,
+    });
+  }
+};
+
+  // 修改图片上传处理函数
+  const handleImageUploadAndProcess = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+  
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target?.result as string;
+      setReferenceImage(base64);
+      setMode('img2video');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 在组件顶部添加路由参数处理
+  useEffect(() => {
+    const { history } = router.query;
+    if (history) {
+      // 从历史记录恢复状态
+      const loadHistory = async () => {
+        try {
+          const histories = await getHistories();
+          const targetHistory = histories.find(h => h.id === history);
+          if (targetHistory) {
+            await restoreVideoFromHistory(targetHistory);
+          }
+        } catch (error) {
+          console.error('加载历史记录失败:', error);
+        }
+      };
+      loadHistory();
+    }
+  }, [router.query]);
+
+  // 添加页面可见性变化处理
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const savedState = getVideoState();
+        if (savedState && !isVideoStateExpired(savedState)) {
+          // 恢复生成状态
+          setIsGenerating(savedState.status === 'generating');
+          setProgress(savedState.progress);
+          setCurrentTaskId(savedState.taskId);
+          
+          // 恢复其他状态
+          if (savedState.type === 'img2video' && savedState.referenceImage) {
+            setMode('img2video');
+            setReferenceImage(savedState.referenceImage);
+          }
+          
+          // 如果有正在进行的任务，继续轮询
+          if (savedState.status === 'generating' && savedState.taskId) {
+            pollVideoStatus(savedState.taskId);
+          }
+          
+          // 如果任务已完成，显示视频
+          if (savedState.status === 'completed' && savedState.result?.videoUrl) {
+            setGeneratedVideo(savedState.result.videoUrl);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  // 修改视频预览区域的渲染
+  const renderVideoPreview = () => {
+    if (isGenerating) {
+      return (
+        <Box
+          position="relative"
+          width="100%"
+          height="400px"
+          bg="gray.100"
+          _dark={{ bg: 'gray.700' }}
+          borderRadius="lg"
+          display="flex"
+          flexDirection="column"
+          justifyContent="center"
+          alignItems="center"
+        >
+          <VStack spacing={4}>
+            <Spinner size="xl" color="purple.500" />
+            <Text>正在为您生成视频...</Text>
+            <Progress
+              value={progress}
+              width="80%"
+              colorScheme="purple"
+              hasStripe
+              isAnimated
+            />
+          </VStack>
+        </Box>
+      );
+    }
+
+    if (generatedVideo) {
+      return (
+        <Box position="relative" width="100%">
+          <AspectRatio ratio={16/9}>
+            <video
+              src={generatedVideo}
+              controls
+              style={{
+                width: '100%',
+                height: '100%',
+                borderRadius: '8px',
+              }}
+            />
+          </AspectRatio>
+        </Box>
+      );
+    }
+
+    return (
+      <Box
+        width="100%"
+        height="400px"
+        bg="gray.100"
+        _dark={{ bg: 'gray.700' }}
+        borderRadius="lg"
+        display="flex"
+        justifyContent="center"
+        alignItems="center"
+      >
+        <Text color="gray.500">视频预览区域</Text>
+      </Box>
+    );
+  };
+
+  // 添加默认值处理函数
+  const createVideoState = (
+    taskId: string,
+    status: 'pending' | 'generating' | 'completed' | 'failed',
+    progress: number,
+    currentMode: 'text2video' | 'img2video' = 'text2video',
+    currentPrompt: string = '',
+    currentStyle: string = '',
+    currentAspectRatio: string = '16:9',
+    currentReferenceImage: string | null = null
+  ): VideoGenerationState => {
+    return {
+      taskId,
+      status,
+      progress,
+      timestamp: Date.now(),
+      prompt: currentPrompt,
+      style: currentStyle,
+      aspectRatio: currentAspectRatio,
+      type: currentMode,
+      referenceImage: currentMode === 'img2video' ? currentReferenceImage : null
+    };
+  };
+
+  // 修改handleRouteChange函数
+  const handleRouteChange = () => {
+    if (isGenerating && currentTaskId) {
+      saveVideoState(createVideoState(
+        currentTaskId,
+        'generating',
+        progress,
+        mode,
+        prompt,
+        videoStyle,
+        aspectRatio,
+        referenceImage
+      ));
+    }
+  };
+
+  // 修改handleVisibilityChange函数
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      const savedState = getVideoState();
+      if (savedState && !isVideoStateExpired(savedState)) {
+        setIsGenerating(savedState.status === 'generating');
+        setProgress(savedState.progress);
+        setCurrentTaskId(savedState.taskId);
+        
+        if (savedState.type === 'img2video' && savedState.referenceImage) {
+          setMode('img2video');
+          setReferenceImage(savedState.referenceImage);
+        }
+        
+        if (savedState.status === 'generating' && savedState.taskId) {
+          checkAndUpdateVideoStatus(savedState.taskId);
+        }
+        
+        if (savedState.status === 'completed' && savedState.result?.videoUrl) {
+          setGeneratedVideo(savedState.result.videoUrl);
+        }
+      }
+    }
+  };
+
+
 
   return (
     <Box w="100%" maxW="100vw" overflow="hidden">
@@ -2842,7 +3290,7 @@ export default function Video() {
                         onClick={handleGenerate}
                         isLoading={isGenerating}
                         loadingText={t('video.generating')}
-                        disabled={!prompt.trim() || isGenerating}
+                        disabled={!prompt.trim() || (mode === 'img2video' && (!referenceImage || !(referenceImage.startsWith('data:image/') || referenceImage.startsWith('http://') || referenceImage.startsWith('https://')))) || isGenerating}
                       >
                         {t('video.generateVideo')}
                         <Text as="span" fontSize="sm" fontWeight="bold" ml={2} px={3} py={0.5} borderRadius="full" bgGradient="linear(to-r, purple.400, purple.600)" color="white" display="inline-block">
@@ -2909,58 +3357,7 @@ export default function Video() {
                           </HStack>
                         </CardHeader>
                         <CardBody>
-                          {generatedVideo ? (
-                            <Box position="relative" w="full">
-                              <AspectRatio 
-                                ratio={aspectRatio === '16:9' ? 16/9 : aspectRatio === '9:16' ? 9/16 : aspectRatio === '1:1' ? 1 : aspectRatio === '3:4' ? 3/4 : 4/3}
-                                w="full"
-                              >
-                                <video
-                                  src={generatedVideo}
-                                  controls
-                                  style={{
-                                    width: '100%',
-                                    height: '100%',
-                                    borderRadius: '8px',
-                                    objectFit: 'contain'
-                                  }}
-                                />
-                              </AspectRatio>
-                            </Box>
-                          ) : (
-                            <Box w="full">
-                              <AspectRatio 
-                                ratio={aspectRatio === '16:9' ? 16/9 : aspectRatio === '9:16' ? 9/16 : aspectRatio === '1:1' ? 1 : aspectRatio === '3:4' ? 3/4 : 4/3}
-                                w="full"
-                              >
-                                <Flex
-                                  align="center"
-                                  justify="center"
-                                  bg={useColorModeValue('gray.100', 'gray.700')}
-                                  borderRadius="md"
-                                  border="2px dashed"
-                                  borderColor={useColorModeValue('gray.300', 'gray.600')}
-                                  w="full"
-                                  h="full"
-                                >
-                                  <VStack spacing={4}>
-                                    <Icon as={FiVideo} size="64px" color="gray.400" />
-                                    <VStack spacing={2}>
-                                      <Text color="gray.500" textAlign="center" fontSize="lg" fontWeight="medium">
-                                        {t('video.previewArea')}
-                                      </Text>
-                                      <Text color="gray.400" textAlign="center" fontSize="sm">
-                                        {t('video.previewDesc')}
-                                      </Text>
-                                      <Text color="purple.500" textAlign="center" fontSize="xs" fontWeight="medium" mt={2}>
-                                        {t('video.durationNote')}
-                                      </Text>
-                                    </VStack>
-                                  </VStack>
-                                </Flex>
-                              </AspectRatio>
-                            </Box>
-                          )}
+                          {renderVideoPreview()}
                         </CardBody>
                       </Card>
                     </VStack>
@@ -2983,7 +3380,7 @@ export default function Video() {
                               accept="image/*"
                               ref={fileInputRef}
                               display="none"
-                              onChange={handleImageUpload}
+                              onChange={handleImageUploadAndProcess}
                             />
                             
                             {referenceImage ? (
@@ -3240,58 +3637,7 @@ export default function Video() {
                           </HStack>
                         </CardHeader>
                         <CardBody>
-                          {generatedVideo ? (
-                            <Box position="relative" w="full">
-                              <AspectRatio 
-                                ratio={aspectRatio === '16:9' ? 16/9 : aspectRatio === '9:16' ? 9/16 : aspectRatio === '1:1' ? 1 : aspectRatio === '3:4' ? 3/4 : 4/3}
-                                w="full"
-                              >
-                                <video
-                                  src={generatedVideo}
-                                  controls
-                                  style={{
-                                    width: '100%',
-                                    height: '100%',
-                                    borderRadius: '8px',
-                                    objectFit: 'contain'
-                                  }}
-                                />
-                              </AspectRatio>
-                            </Box>
-                          ) : (
-                            <Box w="full">
-                              <AspectRatio 
-                                ratio={aspectRatio === '16:9' ? 16/9 : aspectRatio === '9:16' ? 9/16 : aspectRatio === '1:1' ? 1 : aspectRatio === '3:4' ? 3/4 : 4/3}
-                                w="full"
-                              >
-                                <Flex
-                                  align="center"
-                                  justify="center"
-                                  bg={useColorModeValue('gray.100', 'gray.700')}
-                                  borderRadius="md"
-                                  border="2px dashed"
-                                  borderColor={useColorModeValue('gray.300', 'gray.600')}
-                                  w="full"
-                                  h="full"
-                                >
-                                  <VStack spacing={4}>
-                                    <Icon as={FiVideo} size="64px" color="gray.400" />
-                                    <VStack spacing={2}>
-                                      <Text color="gray.500" textAlign="center" fontSize="lg" fontWeight="medium">
-                                        {t('video.previewArea')}
-                                      </Text>
-                                      <Text color="gray.400" textAlign="center" fontSize="sm">
-                                        {t('video.previewDesc')}
-                                      </Text>
-                                      <Text color="purple.500" textAlign="center" fontSize="xs" fontWeight="medium" mt={2}>
-                                        {t('video.durationNote')}
-                                      </Text>
-                                    </VStack>
-                                  </VStack>
-                                </Flex>
-                              </AspectRatio>
-                            </Box>
-                          )}
+                          {renderVideoPreview()}
                         </CardBody>
                       </Card>
                     </VStack>
