@@ -13,6 +13,7 @@ export interface Message {
     motionStrength?: number;
     [key: string]: any;
   };
+  videoUrl?: string;
 }
 
 export type ChatMode = 'default' | 'write' | 'translate' | 'travel' | 'script' | 'video';
