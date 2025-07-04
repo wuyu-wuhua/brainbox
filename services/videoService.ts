@@ -63,7 +63,7 @@ const aspectRatioToSize: { [key: string]: string } = {
 };
 
 // 视频生成状态管理
-interface VideoGenerationState {
+export interface VideoGenerationState {
   taskId: string;
   prompt: string;
   style: string;
@@ -75,6 +75,8 @@ interface VideoGenerationState {
     error?: string;
   };
   timestamp: number;
+  type: 'text2video' | 'img2video';
+  referenceImage?: string | null;
 }
 
 // 本地存储键

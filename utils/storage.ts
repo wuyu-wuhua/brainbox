@@ -230,6 +230,18 @@ export const saveSessionHistory = (messages: Message[], model: string, type: 'ch
     return '';
   }
 
+  // AI阅读：同一文档只存储一条历史记录（model+首条消息内容相同即视为同一文档）
+  const histories = getHistories();
+  if (type === 'read') {
+    const docKey = model + '|' + validMessages[0].content.slice(0, 30);
+    const existingDocHistory = histories.find(h => h.type === 'read' && (h.model + '|' + (h.messages[0]?.content || '')).startsWith(docKey));
+    if (existingDocHistory) {
+      // 直接更新该历史
+      updateSessionHistory(existingDocHistory.id, validMessages, model);
+      return existingDocHistory.id;
+    }
+  }
+
   // 生成更唯一的ID（时间戳 + 随机数）
   const sessionId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const history: ChatHistory = {
@@ -242,7 +254,6 @@ export const saveSessionHistory = (messages: Message[], model: string, type: 'ch
   };
 
   // 检查是否已存在相同内容的历史记录
-  const histories = getHistories();
   const now = Date.now();
   const existingSimilarHistory = histories.find(h => {
     // 检查类型和模型是否相同

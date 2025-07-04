@@ -319,6 +319,10 @@ const translations = {
     'history.deleteConfirmText': '确定要删除这条历史记录吗？此操作无法撤销。',
     'history.noHistory': '暂无历史记录',
     'history.records':'条记录',
+    'history.chat': '对话',
+    'history.draw': '绘画',
+    'history.read': '阅读',
+    'history.video': '视频',
     
     // 个人空间
     'space.title': '个人空间',
@@ -539,6 +543,7 @@ const translations = {
     'video.styles.movie': '电影',
     'video.styles.cyberpunk': '赛博朋克',
     'video.styles.cyberpunkDesc': '未来科技风格',
+    'video.newSession': '新视频会话',
     
     // 个人空间翻译
     'space.videos': '生成视频',
@@ -969,6 +974,10 @@ const translations = {
     'history.deleteConfirm': 'Delete History',
     'history.deleteConfirmText': 'Are you sure you want to delete this history record? This action cannot be undone.',
     'history.records':'records',
+    'history.chat': 'Chat',
+    'history.draw': 'Draw',
+    'history.read': 'Read',
+    'history.video': 'Video',
 
     
     // 个人空间
@@ -1190,6 +1199,7 @@ const translations = {
     'video.styles.movie': 'Movie',
     'video.styles.cyberpunk': 'Cyberpunk',
     'video.styles.cyberpunkDesc': 'Future tech style',
+    'video.newSession': 'New Video Session',
     
     // 个人空间翻译
     'space.videos': 'Generated Videos',
