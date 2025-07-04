@@ -62,6 +62,67 @@ const aspectRatioToSize: { [key: string]: string } = {
   '3:4': '832*1088'   // 添加3:4比例支持
 };
 
+// 视频生成状态管理
+interface VideoGenerationState {
+  taskId: string;
+  prompt: string;
+  style: string;
+  aspectRatio: string;
+  status: 'pending' | 'generating' | 'completed' | 'failed';
+  progress: number;
+  result?: {
+    videoUrl?: string;
+    error?: string;
+  };
+  timestamp: number;
+}
+
+// 本地存储键
+const VIDEO_STATE_KEY = 'video_generation_state';
+
+// 保存视频生成状态到本地存储
+export const saveVideoState = (state: VideoGenerationState) => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(VIDEO_STATE_KEY, JSON.stringify(state));
+  }
+};
+
+// 从本地存储获取视频生成状态
+export const getVideoState = (): VideoGenerationState | null => {
+  if (typeof window !== 'undefined') {
+    const savedState = localStorage.getItem(VIDEO_STATE_KEY);
+    if (savedState) {
+      return JSON.parse(savedState);
+    }
+  }
+  return null;
+};
+
+// 清除视频生成状态
+export const clearVideoState = () => {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(VIDEO_STATE_KEY);
+  }
+};
+
+// 更新视频生成进度
+export const updateVideoProgress = (taskId: string, progress: number) => {
+  const currentState = getVideoState();
+  if (currentState && currentState.taskId === taskId) {
+    saveVideoState({
+      ...currentState,
+      progress,
+      timestamp: Date.now()
+    });
+  }
+};
+
+// 检查视频生成状态是否过期（超过30分钟）
+export const isVideoStateExpired = (state: VideoGenerationState): boolean => {
+  const thirtyMinutes = 30 * 60 * 1000; // 30分钟（毫秒）
+  return Date.now() - state.timestamp > thirtyMinutes;
+};
+
 export const videoService = {
   // 生成视频（文生视频）
   generateVideo: async (
