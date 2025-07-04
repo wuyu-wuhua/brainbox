@@ -85,6 +85,7 @@ import { saveHistory, getHistories } from '../utils/storage';
 import { pageStateManager } from '../utils/pageState';
 import { ChatHistory } from '../types/chat';
 import { useRouter } from 'next/router';
+import { videoService, getVideoState, saveVideoState, clearVideoState, isVideoStateExpired } from '../services/videoService';
 
 const StylePreview = ({ style, isSelected }) => {
   const videoRef = useRef(null);
@@ -193,6 +194,8 @@ export default function Video() {
   const { isOpen: isLoginOpen, onOpen: onLoginOpen, onClose: onLoginClose } = useDisclosure();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [isGuestMode, setIsGuestMode] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(null);
 
   // 视频样式选项 - 调整为6个偶数风格
   const videoStyles = [
@@ -324,6 +327,71 @@ export default function Video() {
 
   const restorePageState = () => {
     if (user) {
+      // 首先检查是否有待恢复的视频历史记录
+      if (typeof window !== 'undefined') {
+        const pendingVideoHistory = sessionStorage.getItem('pendingVideoHistory');
+        if (pendingVideoHistory) {
+          try {
+            const history = JSON.parse(pendingVideoHistory);
+            console.log('恢复视频历史记录:', history);
+            
+            // 从历史记录中恢复状态
+            if (history.messages && history.messages.length > 0) {
+              // 检查是否是Google Veo 3的历史记录
+              const hasVeo3Messages = history.messages.some(msg => 
+                msg.content && (
+                  msg.content.includes('Google Veo 3') || 
+                  msg.content.includes('1250积分') ||
+                  msg.metadata?.isVeo3
+                )
+              );
+              
+              if (hasVeo3Messages) {
+                console.log('检测到Google Veo 3历史记录，切换到gen3模式');
+                setModelType('gen3');
+                localStorage.setItem('video_model_type', 'gen3');
+                
+                // 如果有生成的视频，尝试恢复
+                const videoMessage = history.messages.find(msg => 
+                  msg.content && msg.content.includes('http') && 
+                  (msg.content.includes('.mp4') || msg.content.includes('video'))
+                );
+                if (videoMessage) {
+                  console.log('找到视频消息，尝试恢复视频:', videoMessage);
+                  // 提取视频URL
+                  const urlMatch = videoMessage.content.match(/https?:\/\/[^\s\)]+\.mp4/);
+                  if (urlMatch) {
+                    console.log('恢复视频URL:', urlMatch[0]);
+                    // 在这里可以根据需要恢复视频状态
+                  }
+                }
+              } else {
+                console.log('普通视频历史记录，保持regular模式');
+                setModelType('regular');
+                localStorage.setItem('video_model_type', 'regular');
+              }
+            }
+            
+            // 清除pending历史记录
+            sessionStorage.removeItem('pendingVideoHistory');
+            
+            // 显示成功提示
+            toast({
+              title: '历史记录已恢复',
+              description: `已恢复${history.type === 'video' ? '视频生成' : ''}历史记录`,
+              status: 'success',
+              duration: 2000,
+            });
+            
+            return; // 如果恢复了历史记录，不再执行普通的状态恢复
+          } catch (error) {
+            console.error('恢复视频历史记录失败:', error);
+            sessionStorage.removeItem('pendingVideoHistory');
+          }
+        }
+      }
+      
+      // 普通的页面状态恢复
       try {
         const savedState = localStorage.getItem('video_page_state');
         if (savedState) {
@@ -1015,28 +1083,85 @@ export default function Video() {
     const [gen3VideoStyle, setGen3VideoStyle] = useState('realistic');
     
     // 对话消息状态 - 从localStorage恢复
-      const [gen3Messages, setGen3Messages] = useState<Array<{
-    content: string;
-    isUser: boolean;
-    timestamp: string;
-    videoUrl?: string;
-    metadata?: any;
-  }>>(() => {
-    // 初始化时从localStorage恢复消息
-    if (typeof window !== 'undefined') {
-      try {
-        const backup = localStorage.getItem('gen3_messages_backup');
-        if (backup) {
-          const parsedMessages = JSON.parse(backup);
-          console.log('🔄 从localStorage恢复Gen3消息:', parsedMessages.length, '条');
-          return parsedMessages;
+    const [gen3Messages, setGen3Messages] = useState<Array<{
+      content: string;
+      isUser: boolean;
+      timestamp: string;
+      videoUrl?: string;
+      metadata?: any;
+    }>>(() => {
+      // 初始化时从localStorage恢复消息
+      if (typeof window !== 'undefined') {
+        try {
+          const backup = localStorage.getItem('gen3_messages_backup');
+          if (backup) {
+            const parsedMessages = JSON.parse(backup);
+            console.log('🔄 从localStorage恢复Gen3消息:', parsedMessages.length, '条');
+            return parsedMessages;
+          }
+        } catch (e) {
+          console.warn('localStorage恢复失败:', e);
         }
-      } catch (e) {
-        console.warn('localStorage恢复失败:', e);
       }
-    }
-    return [];
-  });
+      return [];
+    });
+
+    // 🎯 新增：保存和恢复生成状态（包括进度条）
+    const saveGen3State = () => {
+      if (typeof window !== 'undefined') {
+        const state = {
+          gen3Prompt,
+          gen3IsGenerating,
+          gen3GeneratedVideo,
+          gen3Progress,
+          gen3AspectRatio,
+          gen3CameraMovement,
+          gen3Speed,
+          gen3Lighting,
+          gen3ReferenceImage,
+          gen3VideoStyle,
+          gen3Messages,
+          timestamp: Date.now()
+        };
+        localStorage.setItem('gen3_state_backup', JSON.stringify(state));
+        localStorage.setItem('gen3_messages_backup', JSON.stringify(gen3Messages));
+        console.log('🔄 已保存Gen3状态:', state);
+      }
+    };
+
+    const restoreGen3State = () => {
+      if (typeof window !== 'undefined') {
+        try {
+          const savedState = localStorage.getItem('gen3_state_backup');
+          if (savedState) {
+            const state = JSON.parse(savedState);
+            const isStateValid = state.timestamp && (Date.now() - state.timestamp) < 3600000; // 1小时
+            
+            if (isStateValid) {
+              console.log('🔄 恢复Gen3状态:', state);
+              setGen3Prompt(state.gen3Prompt || '');
+              setGen3IsGenerating(state.gen3IsGenerating || false);
+              setGen3GeneratedVideo(state.gen3GeneratedVideo || null);
+              setGen3Progress(state.gen3Progress || 0);
+              setGen3AspectRatio(state.gen3AspectRatio || '16:9');
+              setGen3CameraMovement(state.gen3CameraMovement || 'static');
+              setGen3Speed(state.gen3Speed || 'normal');
+              setGen3Lighting(state.gen3Lighting || 'natural');
+              setGen3ReferenceImage(state.gen3ReferenceImage || null);
+              setGen3VideoStyle(state.gen3VideoStyle || 'realistic');
+              if (state.gen3Messages && state.gen3Messages.length > 0) {
+                setGen3Messages(state.gen3Messages);
+              }
+            } else {
+              localStorage.removeItem('gen3_state_backup');
+            }
+          }
+        } catch (error) {
+          console.error('恢复Gen3状态失败:', error);
+          localStorage.removeItem('gen3_state_backup');
+        }
+      }
+    };
   
       // 🎯 关键修复：使用 useRef 来持久化消息状态，防止被路由重置
   const gen3MessagesRef = useRef(gen3Messages);
@@ -1048,26 +1173,59 @@ export default function Video() {
     }
   }, [gen3Messages]);
 
-  // 只在首次加载且gen3Messages为空时恢复gen3Messages，生成新视频后绝不再自动恢复
+  // 🎯 页面初始化时恢复状态
   const isFirstLoadRef = useRef(true);
   useEffect(() => {
-    if (isFirstLoadRef.current && gen3Messages.length === 0) {
+    if (isFirstLoadRef.current) {
       isFirstLoadRef.current = false;
-      if (typeof window !== 'undefined') {
-        try {
-          const backup = localStorage.getItem('gen3_messages_backup');
-          if (backup) {
-            const parsedMessages = JSON.parse(backup);
-            if (parsedMessages.length > 0) {
-              setGen3Messages(parsedMessages);
-            }
-          }
-        } catch (e) {}
+      
+      // 首先检查是否有pending的视频历史记录
+      const pendingVideoHistory = sessionStorage.getItem('pendingVideoHistory');
+      if (pendingVideoHistory) {
+        // 如果有pending历史记录，交给主页面的restorePageState处理
+        console.log('检测到pending视频历史记录，跳过普通状态恢复');
+        return;
+      }
+      
+      // 普通的状态恢复
+      if (gen3Messages.length === 0) {
+        restoreGen3State();
       }
     }
-    // 只依赖首次加载和gen3Messages为空，后续不再触发
+    // 只在首次加载时执行
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 🎯 自动保存状态
+  useEffect(() => {
+    if (!isFirstLoadRef.current) {
+      saveGen3State();
+    }
+  }, [gen3Prompt, gen3IsGenerating, gen3GeneratedVideo, gen3Progress, gen3AspectRatio, 
+      gen3CameraMovement, gen3Speed, gen3Lighting, gen3ReferenceImage, gen3VideoStyle, gen3Messages]);
+
+  // 🎯 页面卸载时保存状态
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      saveGen3State();
+    };
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        saveGen3State();
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      saveGen3State();
+    };
+  }, [gen3Prompt, gen3IsGenerating, gen3GeneratedVideo, gen3Progress, gen3AspectRatio, 
+      gen3CameraMovement, gen3Speed, gen3Lighting, gen3ReferenceImage, gen3VideoStyle, gen3Messages]);
 
   // 禁止任何模式切换、路由变化等副作用自动恢复历史，只允许明确带loadHistory参数时恢复
   useEffect(() => {
@@ -2432,6 +2590,108 @@ export default function Video() {
   const handleLoginClose = () => {
     onLoginClose();
   };
+
+  // 恢复保存的状态
+  useEffect(() => {
+    const savedState = getVideoState();
+    if (savedState && !isVideoStateExpired(savedState)) {
+      setIsGenerating(savedState.status === 'generating');
+      setGeneratingProgress(savedState.progress);
+      setCurrentTaskId(savedState.taskId);
+      
+      // 如果有正在进行的任务，继续轮询状态
+      if (savedState.status === 'generating' && savedState.taskId) {
+        pollVideoStatus(savedState.taskId);
+      }
+    } else if (savedState) {
+      // 如果状态已过期，清除它
+      clearVideoState();
+    }
+  }, []);
+
+  // 轮询视频状态
+  const pollVideoStatus = async (taskId: string) => {
+    try {
+      const response = await videoService.checkVideoStatus(taskId);
+      const status = response.output.task_status;
+      
+      // 更新进度
+      let currentProgress = 0;
+      if (status === 'PENDING') {
+        currentProgress = 20;
+      } else if (status === 'RUNNING') {
+        currentProgress = 60;
+      } else if (status === 'SUCCEEDED') {
+        currentProgress = 100;
+      }
+      
+      setGeneratingProgress(currentProgress);
+      
+      // 保存当前状态
+      saveVideoState({
+        taskId,
+        status: status.toLowerCase() as any,
+        progress: currentProgress,
+        timestamp: Date.now(),
+        prompt: '', // 从之前的状态中获取
+        style: '',
+        aspectRatio: ''
+      });
+
+      if (status === 'SUCCEEDED') {
+        setIsGenerating(false);
+        clearVideoState();
+        // 处理成功...
+      } else if (status === 'FAILED') {
+        setIsGenerating(false);
+        clearVideoState();
+        toast({
+          title: '视频生成失败',
+          description: response.output.error_message || '未知错误',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      } else {
+        // 继续轮询
+        setTimeout(() => pollVideoStatus(taskId), 3000);
+      }
+    } catch (error) {
+      console.error('检查视频状态失败:', error);
+      setIsGenerating(false);
+      clearVideoState();
+      toast({
+        title: '检查视频状态失败',
+        description: '请稍后重试',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  };
+
+  // 处理页面离开
+  useEffect(() => {
+    const handleRouteChange = () => {
+      if (isGenerating && currentTaskId) {
+        // 保存当前状态
+        saveVideoState({
+          taskId: currentTaskId,
+          status: 'generating',
+          progress,
+          timestamp: Date.now(),
+          prompt: '', // 从组件状态中获取
+          style: '',
+          aspectRatio: ''
+        });
+      }
+    };
+
+    router.events.on('routeChangeStart', handleRouteChange);
+    return () => {
+      router.events.off('routeChangeStart', handleRouteChange);
+    };
+  }, [isGenerating, currentTaskId, progress]);
 
   return (
     <Box w="100%" maxW="100vw" overflow="hidden">

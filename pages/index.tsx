@@ -44,11 +44,40 @@ import VideoView from '../components/VideoView';
 
 const models = [
   { name: 'DeepSeek-R1-0528', displayName: 'DeepSeek R1 0528', logo: '/images/deepseek.png' },
-  { name: 'GPT-4', displayName: 'GPT-4', logo: '/images/Chat.jpg' },
+  { name: 'GPT-3.5-Turbo', displayName: 'GPT-3.5 Turbo', logo: '/images/Chat.jpg' },
   { name: 'Claude-3.5-Sonnet', displayName: 'Claude 3.5 Sonnet', logo: '/images/claude.png' },
   { name: 'Gemini-1.5-Pro', displayName: 'Gemini 1.5 Pro', logo: '/images/gemini.png' },
   { name: 'Llama-3.1-70B', displayName: 'Llama 3.1 70B', logo: '/images/llama.png' },
+  { name: 'Qwen-Plus', displayName: 'Qwen Plus', logo: '/images/qwen.png' },
+  { name: 'Grok-Beta', displayName: 'Grok Beta', logo: '/images/grok.png' },
 ];
+
+// 额外的模型名称映射，确保兼容性
+const modelNameMapping: { [key: string]: string } = {
+  'GPT-4': 'GPT-3.5-Turbo',
+  'GPT-4-Turbo': 'GPT-3.5-Turbo',
+  'GPT-4o': 'GPT-3.5-Turbo',
+  'GPT-4.5-Turbo': 'GPT-3.5-Turbo',
+  'Claude-3-Opus': 'Claude-3.5-Sonnet',
+  'Claude-3-Sonnet': 'Claude-3.5-Sonnet',
+  'Claude-3-Haiku': 'Claude-3.5-Sonnet',
+  'Claude-3.5-Opus': 'Claude-3.5-Sonnet',
+  'Claude-3.7-Sonnet': 'Claude-3.5-Sonnet',
+  'Gemini-1.5-Flash': 'Gemini-1.5-Pro',
+  'Gemini-1.0-Ultra': 'Gemini-1.5-Pro',
+  'Gemini-2.5-Flash': 'Gemini-1.5-Pro',
+  'Gemini-2.5-Pro': 'Gemini-1.5-Pro',
+  'Llama-3.1-8B': 'Llama-3.1-70B',
+  'Llama-3-70B-Instruct': 'Llama-3.1-70B',
+  'Code-Llama-70B': 'Llama-3.1-70B',
+  'Llama-3.1-405B': 'Llama-3.1-70B',
+  'DeepSeek-R1-Lite': 'DeepSeek-R1-0528',
+  'DeepSeek-V3': 'DeepSeek-R1-0528',
+  'Grok-1.5': 'Grok-Beta',
+  'Grok-2': 'Grok-Beta',
+  'Qwen-Turbo': 'Qwen-Plus',
+  'Qwen-Max': 'Qwen-Plus',
+};
 
 // 高级模型列表（20积分）
 const advancedModels = [
@@ -69,6 +98,48 @@ const advancedModels = [
 // 判断模型类型
 const getModelType = (modelName: string): 'basic' | 'advanced' => {
   return advancedModels.includes(modelName) ? 'advanced' : 'basic';
+};
+
+// 获取模型头像的函数
+const getModelAvatar = (modelName: string): string => {
+  // 首先尝试直接匹配
+  let model = models.find(m => m.name === modelName);
+  
+  // 如果没找到，尝试使用映射
+  if (!model && modelNameMapping[modelName]) {
+    model = models.find(m => m.name === modelNameMapping[modelName]);
+  }
+  
+  // 如果还是没找到，尝试模糊匹配
+  if (!model) {
+    model = models.find(m => 
+      modelName.toLowerCase().includes(m.name.toLowerCase().split('-')[0]) ||
+      m.name.toLowerCase().includes(modelName.toLowerCase().split('-')[0])
+    );
+  }
+  
+  return model?.logo || '/images/ai-avatar.png';
+};
+
+// 获取模型显示名称的函数
+const getModelDisplayName = (modelName: string): string => {
+  // 首先尝试直接匹配
+  let model = models.find(m => m.name === modelName);
+  
+  // 如果没找到，尝试使用映射
+  if (!model && modelNameMapping[modelName]) {
+    model = models.find(m => m.name === modelNameMapping[modelName]);
+  }
+  
+  // 如果还是没找到，尝试模糊匹配
+  if (!model) {
+    model = models.find(m => 
+      modelName.toLowerCase().includes(m.name.toLowerCase().split('-')[0]) ||
+      m.name.toLowerCase().includes(modelName.toLowerCase().split('-')[0])
+    );
+  }
+  
+  return model?.displayName || modelName;
 };
 
 export default function Home() {
@@ -398,8 +469,8 @@ export default function Home() {
         content: '',
         isUser: false,
         timestamp: new Date().toISOString(),
-        avatar: models.find(m => m.name === selectedModel)?.logo,
-        modelName: models.find(m => m.name === selectedModel)?.displayName,
+        avatar: getModelAvatar(selectedModel),
+        modelName: getModelDisplayName(selectedModel),
       };
       setMessages(prev => [...prev, aiMessage]);
 
@@ -412,46 +483,66 @@ export default function Home() {
           const lines = buffer.split('\n');
           buffer = lines.pop() || '';
 
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') {
-                // 完成后保存对话历史
-                const finalMessages = [...currentMessages, { ...aiMessage, content: aiContent }];
-                setMessages(finalMessages);
-                
-                // 添加对话活动记录
+                        for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6);
+                  if (data === '[DONE]') {
+                    // 完成后保存对话历史
+                    const finalMessages = [...currentMessages, { ...aiMessage, content: aiContent }];
+                    setMessages(finalMessages);
+                    
+                    // 添加对话活动记录
+                    console.log('=== 准备添加对话活动记录 ===');
+                    console.log('用户信息:', user);
+                    console.log('当前统计数据:', userStats);
+                    try {
+                      await addActivity({
+                        type: 'conversation',
+                        title: 'AI对话',
+                        description: newMessage.content.slice(0, 100) + (newMessage.content.length > 100 ? '...' : '')
+                      });
+                      console.log('✅ 对话活动记录添加成功');
+                    } catch (error) {
+                      console.error('❌ 对话活动记录添加失败:', error);
+                    }
 
-                console.log('=== 准备添加对话活动记录 ===');
-                console.log('用户信息:', user);
-                console.log('当前统计数据:', userStats);
-                try {
-                  await addActivity({
-                    type: 'conversation',
-                    title: 'AI对话',
-                    description: newMessage.content.slice(0, 100) + (newMessage.content.length > 100 ? '...' : '')
-                  });
-                  console.log('✅ 对话活动记录添加成功');
-                } catch (error) {
-                  console.error('❌ 对话活动记录添加失败:', error);
-                }
-
-                
-                // 保存或更新历史记录
-                const sessionIdToUse = currentSessionIdRef.current;
-                if (sessionIdToUse) {
-                  // 更新现有会话
-                  updateSessionHistory(sessionIdToUse, finalMessages, selectedModel);
-                } else {
-                  // 创建新会话
-                  const sessionId = saveSessionHistory(finalMessages, selectedModel, 'chat');
-                  setCurrentSessionId(sessionId);
-                  currentSessionIdRef.current = sessionId;
-                }
-                
-                setIsLoading(false);
-                return;
-              }
+                    // 保存或更新历史记录
+                    console.log('=== 准备保存历史记录 ===');
+                    console.log('当前会话ID:', currentSessionIdRef.current);
+                    console.log('消息数量:', finalMessages.length);
+                    console.log('选择的模型:', selectedModel);
+                    
+                    try {
+                      const sessionIdToUse = currentSessionIdRef.current;
+                      if (sessionIdToUse) {
+                        // 更新现有会话
+                        console.log('更新现有会话');
+                        updateSessionHistory(sessionIdToUse, finalMessages, selectedModel);
+                      } else {
+                        // 创建新会话
+                        console.log('创建新会话');
+                        const sessionId = saveSessionHistory(finalMessages, selectedModel, 'chat');
+                        setCurrentSessionId(sessionId);
+                        currentSessionIdRef.current = sessionId;
+                        console.log('新会话ID:', sessionId);
+                      }
+                      
+                      console.log('✅ 历史记录保存成功');
+                    } catch (error) {
+                      console.error('❌ 历史记录保存失败:', error);
+                      // 显示错误提示
+                      toast({
+                        title: '保存失败',
+                        description: '对话历史记录保存失败，但不影响继续对话',
+                        status: 'warning',
+                        duration: 3000,
+                        isClosable: true,
+                      });
+                    }
+                    
+                    setIsLoading(false);
+                    return;
+                  }
               
               try {
                 const parsed = JSON.parse(data);
@@ -598,8 +689,8 @@ export default function Home() {
         content: '',
         isUser: false,
         timestamp: new Date().toISOString(),
-        avatar: models.find(m => m.name === selectedModel)?.logo,
-        modelName: models.find(m => m.name === selectedModel)?.displayName,
+        avatar: getModelAvatar(selectedModel),
+        modelName: getModelDisplayName(selectedModel),
       };
       setMessages(prev => [...prev, aiMessage]);
 
@@ -621,7 +712,6 @@ export default function Home() {
                 setMessages(finalMessages);
                 
                 // 添加对话活动记录
-
                 console.log('=== 特殊模式准备添加对话活动记录 ===');
                 try {
                   await addActivity({
@@ -634,17 +724,38 @@ export default function Home() {
                   console.error('❌ 特殊模式对话活动记录添加失败:', error);
                 }
 
-                
                 // 保存或更新历史记录
-                const sessionIdToUse = currentSessionIdRef.current;
-                if (sessionIdToUse) {
-                  // 更新现有会话
-                  updateSessionHistory(sessionIdToUse, finalMessages, selectedModel);
-                } else {
-                  // 创建新会话
-                  const sessionId = saveSessionHistory(finalMessages, selectedModel, 'chat');
-                  setCurrentSessionId(sessionId);
-                  currentSessionIdRef.current = sessionId;
+                console.log('=== 特殊模式准备保存历史记录 ===');
+                console.log('当前会话ID:', currentSessionIdRef.current);
+                console.log('消息数量:', finalMessages.length);
+                console.log('选择的模型:', selectedModel);
+                
+                try {
+                  const sessionIdToUse = currentSessionIdRef.current;
+                  if (sessionIdToUse) {
+                    // 更新现有会话
+                    console.log('特殊模式更新现有会话');
+                    updateSessionHistory(sessionIdToUse, finalMessages, selectedModel);
+                  } else {
+                    // 创建新会话
+                    console.log('特殊模式创建新会话');
+                    const sessionId = saveSessionHistory(finalMessages, selectedModel, 'chat');
+                    setCurrentSessionId(sessionId);
+                    currentSessionIdRef.current = sessionId;
+                    console.log('特殊模式新会话ID:', sessionId);
+                  }
+                  
+                  console.log('✅ 特殊模式历史记录保存成功');
+                } catch (error) {
+                  console.error('❌ 特殊模式历史记录保存失败:', error);
+                  // 显示错误提示
+                  toast({
+                    title: '保存失败',
+                    description: '对话历史记录保存失败，但不影响继续对话',
+                    status: 'warning',
+                    duration: 3000,
+                    isClosable: true,
+                  });
                 }
                 
                 setIsLoading(false);
@@ -905,8 +1016,8 @@ export default function Home() {
         content: '',
         isUser: false,
         timestamp: new Date().toISOString(),
-        avatar: models.find(m => m.name === selectedModel)?.logo,
-        modelName: models.find(m => m.name === selectedModel)?.displayName,
+        avatar: getModelAvatar(selectedModel),
+        modelName: getModelDisplayName(selectedModel),
       };
       setMessages(prev => [...prev, aiMessage]);
 
@@ -928,7 +1039,6 @@ export default function Home() {
                 setMessages(finalMessages);
                 
                 // 添加对话活动记录
-
                 console.log('=== 重新生成准备添加对话活动记录 ===');
                 try {
                   await addActivity({
@@ -941,17 +1051,38 @@ export default function Home() {
                   console.error('❌ 重新生成对话活动记录添加失败:', error);
                 }
 
-                
                 // 保存或更新历史记录
-                const sessionIdToUse = currentSessionIdRef.current;
-                if (sessionIdToUse) {
-                  // 更新现有会话
-                  updateSessionHistory(sessionIdToUse, finalMessages, selectedModel);
-                } else {
-                  // 创建新会话
-                  const sessionId = saveSessionHistory(finalMessages, selectedModel, 'chat');
-                  setCurrentSessionId(sessionId);
-                  currentSessionIdRef.current = sessionId;
+                console.log('=== 重新生成准备保存历史记录 ===');
+                console.log('当前会话ID:', currentSessionIdRef.current);
+                console.log('消息数量:', finalMessages.length);
+                console.log('选择的模型:', selectedModel);
+                
+                try {
+                  const sessionIdToUse = currentSessionIdRef.current;
+                  if (sessionIdToUse) {
+                    // 更新现有会话
+                    console.log('重新生成更新现有会话');
+                    updateSessionHistory(sessionIdToUse, finalMessages, selectedModel);
+                  } else {
+                    // 创建新会话
+                    console.log('重新生成创建新会话');
+                    const sessionId = saveSessionHistory(finalMessages, selectedModel, 'chat');
+                    setCurrentSessionId(sessionId);
+                    currentSessionIdRef.current = sessionId;
+                    console.log('重新生成新会话ID:', sessionId);
+                  }
+                  
+                  console.log('✅ 重新生成历史记录保存成功');
+                } catch (error) {
+                  console.error('❌ 重新生成历史记录保存失败:', error);
+                  // 显示错误提示
+                  toast({
+                    title: '保存失败',
+                    description: '对话历史记录保存失败，但不影响继续对话',
+                    status: 'warning',
+                    duration: 3000,
+                    isClosable: true,
+                  });
                 }
                 
                 setIsLoading(false);
@@ -1387,17 +1518,17 @@ export default function Home() {
               <Tag
                 size={{ base: 'md', md: 'lg' }}
                 variant="ghost"
-                      borderRadius="full" 
+                borderRadius="full" 
                 p={2}
                 px={4}
                 onClick={onOpen}
-                      cursor="pointer"
+                cursor="pointer"
                 whiteSpace="nowrap"
                 zIndex={20}
               >
                 {t('model.more')}
-                  </Tag>
-                </Flex>
+              </Tag>
+            </Flex>
           </Box>
         </Box>
       </Box>
@@ -1469,7 +1600,7 @@ export default function Home() {
                         height="140px"
                         borderRadius="2xl"
                         modelType={getModelType(selectedModel)}
-                        placeholder={t('chat.placeholder', { model: models.find(m => m.name === selectedModel)?.displayName || selectedModel })}
+                        placeholder={t('chat.placeholder', { model: getModelDisplayName(selectedModel) })}
                         isFreeUser={isFreeUser}
                         freeQuota={freeQuota}
                         freeUsed={freeUsed}
@@ -1699,7 +1830,7 @@ export default function Home() {
                           value={inputValue}
                           onChange={handleInputChange}
                           onSend={handleSendMessage}
-                          placeholder={t('chat.placeholderConversation', { model: models.find(m => m.name === selectedModel)?.displayName || selectedModel })}
+                          placeholder={t('chat.placeholderConversation', { model: getModelDisplayName(selectedModel) })}
                           isInitial={false}
                           height="60px"
                           modelType={getModelType(selectedModel)}
