@@ -77,6 +77,12 @@ const translations = {
     'auth.pleaseWait': '请稍候，即将跳转',
     'auth.success': '登录成功！',
     'auth.redirecting': '正在跳转到首页...',
+    'quota.exceeded': '额度已用完',
+    'quota.exceededDesc': '请升级到专业版以继续使用此功能',
+    'common.freeQuotaExceeded': '免费额度已用完',
+    'common.upgradeToPro': '升级到专业版',
+
+
     
     // AI聊天
     'chat.title': '一站使用全球AI大模型',
@@ -312,6 +318,7 @@ const translations = {
     'history.deleteConfirm': '删除历史记录',
     'history.deleteConfirmText': '确定要删除这条历史记录吗？此操作无法撤销。',
     'history.noHistory': '暂无历史记录',
+    'history.records':'条记录',
     
     // 个人空间
     'space.title': '个人空间',
@@ -687,6 +694,8 @@ const translations = {
     'nav.clearHistory': 'Clear History',
     'nav.switchLanguage': 'Switch Language',
     'nav.login': 'Login',
+    'quota.exceeded': 'Quota Exceeded',
+    'quota.exceededDesc': 'Please upgrade to a paid plan to continue using this feature',
     
     // 认证相关
     'auth.login': 'Login',
@@ -723,6 +732,8 @@ const translations = {
     'auth.pleaseWait': 'Please wait, redirecting...',
     'auth.success': 'Login successful!',
     'auth.redirecting': 'Redirecting to homepage...',
+    'common.freeQuotaExceeded': 'Free quota exceeded',
+    'common.upgradeToPro': 'Upgrade to Pro',
     
     // AI聊天
     'chat.title': 'One-stop access to global AI models',
@@ -957,6 +968,7 @@ const translations = {
     'history.restored': 'Restored',
     'history.deleteConfirm': 'Delete History',
     'history.deleteConfirmText': 'Are you sure you want to delete this history record? This action cannot be undone.',
+    'history.records':'records',
 
     
     // 个人空间

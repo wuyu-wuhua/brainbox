@@ -363,39 +363,50 @@ export const saveHistoryToDB = async (
   type: 'chat' | 'draw' | 'read' | 'video' = 'chat'
 ): Promise<string | null> => {
   try {
+    console.log('=== 开始保存历史记录到数据库 ===');
+    console.log('消息数量:', messages.length);
+    console.log('模型:', model);
+    console.log('类型:', type);
+
     const userId = await getCurrentUserId();
     if (!userId) {
-      console.log('用户未登录，不保存历史记录');
+      console.error('❌ 未找到用户ID，无法保存历史记录');
       return null;
     }
 
-    const now = new Date().toISOString();
+    // 生成一个唯一的会话ID
+    const sessionId = crypto.randomUUID();
 
+    // 准备要保存的数据
+    const historyData = {
+      id: sessionId,
+      user_id: userId,
+      title: messages[0]?.content.substring(0, 50) || '新对话',
+      model: model,
+      messages: messages,
+      type: type,
+      timestamp: new Date().toISOString()
+    };
+
+    console.log('准备保存的数据:', historyData);
+
+    // 直接保存到数据库
     const { data, error } = await supabase
       .from('chat_histories')
-      .insert([
-        {
-          user_id: userId,
-          content: JSON.stringify(messages),
-          messages: JSON.stringify(messages),
-          model: model,
-          type: type,
-          created_at: now,
-          updated_at: now,
-          timestamp: now
-        }
-      ])
-      .select('id')
+      .insert([historyData])
+      .select()
       .single();
 
     if (error) {
-      console.error('保存历史记录失败:', error);
-      return null;
+      console.error('❌ 保存历史记录失败:', error);
+      throw error;
     }
 
-    return data.id;
+    console.log('✅ 历史记录保存成功:', data);
+    return sessionId;
+
   } catch (error) {
-    console.error('保存历史记录异常:', error);
+    console.error('❌ 保存历史记录时发生错误:', error);
     return null;
   }
 };

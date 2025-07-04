@@ -139,7 +139,7 @@ ${data.translatedText}
           isUser: false,
           timestamp: new Date().toISOString(),
           avatar: selectedModel?.logo || '/images/ai-avatar.png',
-          modelName: selectedModel?.displayName || '百度翻译',
+          modelName: selectedModel?.displayName || '智能翻译',
         };
 
         // 发送消息到主聊天界面

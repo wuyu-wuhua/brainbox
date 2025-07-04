@@ -260,9 +260,14 @@ const Sidebar: React.FC<SidebarProps> = ({
         query: { loadHistory: history.id }
       });
     } else if (history.type === 'video') {
+      // 保存视频历史记录到sessionStorage，以便video页面恢复
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('pendingVideoHistory', JSON.stringify(history));
+        console.log('保存video历史记录到sessionStorage:', history.id);
+      }
       router.push({
         pathname: '/video',
-        query: { loadHistory: history.id }
+        query: { loadHistory: history.id, type: 'video' }
       });
     }
   };

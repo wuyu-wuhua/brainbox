@@ -96,27 +96,7 @@ const getUserStorageKey = (userId: string | null, key: string): string => {
 };
 
 // 后台数据库操作（fire-and-forget）
-const tryDatabaseOperation = async (operation: () => Promise<any>, operationName: string) => {
-  try {
-    console.log(`🔄 ${operationName} - 开始数据库操作`);
-    const result = await operation();
-    if (result) {
-      console.log(`✅ ${operationName} - 数据库操作成功`, result);
-    } else {
-      console.warn(`⚠️ ${operationName} - 数据库操作失败，但localStorage已保存`);
-    }
-  } catch (error) {
-    console.error(`❌ ${operationName} - 数据库操作异常:`, error);
-    // 如果是在开发环境，显示更详细的错误信息
-    if (process.env.NODE_ENV === 'development') {
-      console.error('详细错误信息:', {
-        name: error instanceof Error ? error.name : 'Unknown',
-        message: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
-      });
-    }
-  }
-};
+// 移除了复杂的tryDatabaseOperation函数，直接使用saveHistoryToDB
 
 export const saveHistory = (messages: Message[], model: string, type: 'chat' | 'draw' | 'read' | 'video' = 'chat') => {
   if (!isClient || messages.length === 0) return;
@@ -191,25 +171,38 @@ export const saveHistory = (messages: Message[], model: string, type: 'chat' | '
   localStorage.setItem(storageKey, JSON.stringify(histories));
   historyEventBus.emit();
 
-  // 后台尝试保存到数据库，如果成功会返回数据库ID
-  tryDatabaseOperation(
-    async () => {
+  // 🎯 立即尝试保存到数据库，不使用setTimeout
+  (async () => {
+    try {
+      console.log('=== 开始保存历史记录到数据库 ===');
       const dbId = await saveHistoryToDB(validMessages, model, type);
-      if (dbId && dbId !== uniqueId) {
+      
+      if (dbId) {
+        console.log(`✅ 数据库保存成功，数据库ID: ${dbId}`);
+        
         // 如果数据库返回了不同的ID，更新本地记录
-        const histories = getHistories();
-        const index = histories.findIndex(h => h.id === uniqueId);
-        if (index !== -1) {
-          histories[index].id = dbId;
-          const storageKey = getUserStorageKey(currentUserId, 'chat_histories');
-          localStorage.setItem(storageKey, JSON.stringify(histories));
-          console.log(`历史记录ID已更新: ${uniqueId} -> ${dbId}`);
+        if (dbId !== uniqueId) {
+          const histories = getHistories();
+          const index = histories.findIndex(h => h.id === uniqueId);
+          if (index !== -1) {
+            histories[index].id = dbId;
+            const storageKey = getUserStorageKey(userId, 'chat_histories');
+            localStorage.setItem(storageKey, JSON.stringify(histories));
+            console.log(`✅ 历史记录ID已更新: ${uniqueId} -> ${dbId}`);
+            
+            // 触发历史记录更新事件
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new Event('history-updated'));
+            }
+          }
         }
+      } else {
+        console.warn('⚠️ 数据库保存失败，但本地存储已保存');
       }
-      return dbId;
-    },
-    'saveHistory'
-  );
+    } catch (error) {
+      console.error('❌ 数据库保存异常:', error);
+    }
+  })();
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('history-updated'));
@@ -288,25 +281,38 @@ export const saveSessionHistory = (messages: Message[], model: string, type: 'ch
   localStorage.setItem(storageKey, JSON.stringify(histories));
   historyEventBus.emit();
 
-  // 后台尝试保存到数据库，如果成功会返回数据库ID
-  tryDatabaseOperation(
-    async () => {
+  // 🎯 立即尝试保存到数据库，不使用setTimeout
+  (async () => {
+    try {
+      console.log('=== 开始保存会话历史记录到数据库 ===');
       const dbId = await saveHistoryToDB(validMessages, model, type);
-      if (dbId && dbId !== sessionId) {
+      
+      if (dbId) {
+        console.log(`✅ 会话数据库保存成功，数据库ID: ${dbId}`);
+        
         // 如果数据库返回了不同的ID，更新本地记录
-        const histories = getHistories();
-        const index = histories.findIndex(h => h.id === sessionId);
-        if (index !== -1) {
-          histories[index].id = dbId;
-          const storageKey = getUserStorageKey(currentUserId, 'chat_histories');
-          localStorage.setItem(storageKey, JSON.stringify(histories));
-          console.log(`会话历史记录ID已更新: ${sessionId} -> ${dbId}`);
+        if (dbId !== sessionId) {
+          const histories = getHistories();
+          const index = histories.findIndex(h => h.id === sessionId);
+          if (index !== -1) {
+            histories[index].id = dbId;
+            const storageKey = getUserStorageKey(userId, 'chat_histories');
+            localStorage.setItem(storageKey, JSON.stringify(histories));
+            console.log(`✅ 会话历史记录ID已更新: ${sessionId} -> ${dbId}`);
+            
+            // 触发历史记录更新事件
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new Event('history-updated'));
+            }
+          }
         }
+      } else {
+        console.warn('⚠️ 会话数据库保存失败，但本地存储已保存');
       }
-      return dbId;
-    },
-    'saveSessionHistory'
-  );
+    } catch (error) {
+      console.error('❌ 会话数据库保存异常:', error);
+    }
+  })();
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('history-updated'));
@@ -368,10 +374,18 @@ export const updateSessionHistory = (sessionId: string, messages: Message[], mod
     historyEventBus.emit();
 
     // 后台尝试更新数据库
-    tryDatabaseOperation(
-      () => updateHistoryInDB(sessionId, messages, model),
-      'updateSessionHistory'
-    );
+    (async () => {
+      try {
+        const success = await updateHistoryInDB(sessionId, messages, model);
+        if (success) {
+          console.log('✅ 数据库更新成功');
+        } else {
+          console.warn('⚠️ 数据库更新失败');
+        }
+      } catch (error) {
+        console.error('❌ 数据库更新异常:', error);
+      }
+    })();
   } else {
     console.log('未找到对应的会话ID:', sessionId);
   }
@@ -492,10 +506,18 @@ export function addHistory(history: ChatHistory) {
   historyEventBus.emit();
 
   // 后台尝试保存到数据库
-  tryDatabaseOperation(
-    () => saveHistoryToDB(history.messages, history.model, history.type),
-    'addHistory'
-  );
+  (async () => {
+    try {
+      const dbId = await saveHistoryToDB(history.messages, history.model, history.type);
+      if (dbId) {
+        console.log('✅ 历史记录保存到数据库成功');
+      } else {
+        console.warn('⚠️ 历史记录保存到数据库失败');
+      }
+    } catch (error) {
+      console.error('❌ 历史记录保存到数据库异常:', error);
+    }
+  })();
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('history-updated'));
@@ -553,10 +575,18 @@ export function updateHistory(updatedHistory: ChatHistory) {
     historyEventBus.emit();
 
     // 后台尝试更新数据库
-    tryDatabaseOperation(
-      () => updateHistoryInDB(updatedHistory.id, updatedHistory.messages, updatedHistory.model),
-      'updateHistory'
-    );
+    (async () => {
+      try {
+        const success = await updateHistoryInDB(updatedHistory.id, updatedHistory.messages, updatedHistory.model);
+        if (success) {
+          console.log('✅ 历史记录更新到数据库成功');
+        } else {
+          console.warn('⚠️ 历史记录更新到数据库失败');
+        }
+      } catch (error) {
+        console.error('❌ 历史记录更新到数据库异常:', error);
+      }
+    })();
   }
 
   if (typeof window !== 'undefined') {
@@ -581,10 +611,18 @@ export function renameHistory(id: string, newTitle: string) {
     historyEventBus.emit();
 
     // 后台尝试更新数据库
-    tryDatabaseOperation(
-      () => updateHistoryTitleInDB(id, newTitle),
-      'renameHistory'
-    );
+    (async () => {
+      try {
+        const success = await updateHistoryTitleInDB(id, newTitle);
+        if (success) {
+          console.log('✅ 历史记录标题更新到数据库成功');
+        } else {
+          console.warn('⚠️ 历史记录标题更新到数据库失败');
+        }
+      } catch (error) {
+        console.error('❌ 历史记录标题更新到数据库异常:', error);
+      }
+    })();
   }
 
   if (typeof window !== 'undefined') {
