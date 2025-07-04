@@ -260,15 +260,23 @@ const Sidebar: React.FC<SidebarProps> = ({
         query: { loadHistory: history.id }
       });
     } else if (history.type === 'video') {
-      // 保存视频历史记录到sessionStorage，以便video页面恢复
+      // 修复：Google Veo 3模型历史点击后自动跳转gen3页面并还原视频
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('pendingVideoHistory', JSON.stringify(history));
         console.log('保存video历史记录到sessionStorage:', history.id);
       }
-      router.push({
-        pathname: '/video',
-        query: { loadHistory: history.id, type: 'video' }
-      });
+      // 判断是否为Google Veo 3模型
+      if (history.model && history.model.includes('Google Veo 3')) {
+        router.push({
+          pathname: '/video',
+          query: { loadHistory: history.id, type: 'video', modelType: 'gen3' }
+        });
+      } else {
+        router.push({
+          pathname: '/video',
+          query: { loadHistory: history.id, type: 'video' }
+        });
+      }
     }
   };
 

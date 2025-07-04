@@ -264,8 +264,8 @@ const translations = {
     'read.getContent': '获取内容',
     'read.pasteTextPlaceholder': '请将要分析的文本内容粘贴到这里...',
     'read.confirmAdd': '确认添加',
-    'read.onlySupport10Page': '仅支持10页以内文档',
-    'read.onlySupport10Pages': '仅支持10页以内文档，超出将无法预览或分析',
+    'read.onlySupport10Page': '仅支持50MB以内文档',
+    'read.onlySupport10Pages': '仅支持文件大小不超过50MB，超出将无法预览或分析',
     
 
     // 历史记录
