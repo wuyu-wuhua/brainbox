@@ -142,11 +142,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // 验证图生视频所需参数（Google Veo 3只支持文生视频模式，不需要图片）
-    if (mode === 'img2video' && !img_url) {
-      return res.status(400).json({
-        error: '图生视频模式缺少参考图片',
-        details: '请上传参考图片用于图生视频生成'
-      });
+    if (mode === 'img2video') {
+      if (!img_url) {
+        return res.status(400).json({
+          error: '图生视频模式缺少参考图片',
+          details: '请上传参考图片用于图生视频生成'
+        });
+      }
+      // 支持base64和URL
+      if (!(img_url.startsWith('data:image/') || img_url.startsWith('http://') || img_url.startsWith('https://'))) {
+        return res.status(400).json({ error: '参考图片格式不正确', details: '请上传有效的图片' });
+      }
     }
 
     // Google Veo 3 视频生成模式（使用常规文生视频API）
