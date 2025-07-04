@@ -27,8 +27,8 @@ const uploadHandler = async (req, res) => {
       return res.status(405).json({ error: '只支持POST请求' });
     }
 
-    // 确保上传目录存在
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads');
+    // 确保上传目录存在（Vercel只能用 /tmp）
+    const uploadDir = '/tmp';
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
