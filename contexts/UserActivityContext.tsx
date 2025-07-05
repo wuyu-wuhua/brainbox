@@ -123,7 +123,7 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
     images: 0,
     documents: 0,
     videos: 0,
-    credits: 10000, // 默认给新用户10000积分
+    credits: 0, // 免费会员初始积分为0
     // 免费额度使用情况
     free_conversations_used: 0,
     free_images_used: 0,
@@ -208,7 +208,7 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
         images: 0,
         documents: 0,
         videos: 0,
-        credits: 10000,
+        credits: 0,
         free_conversations_used: 0,
         free_images_used: 0,
         free_documents_used: 0,
@@ -251,7 +251,7 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
       images: 0,
       documents: 0,
       videos: 0,
-      credits: 10000, // 重置时也给10000积分
+      credits: 0,
       free_conversations_used: 0,
       free_images_used: 0,
       free_documents_used: 0,
@@ -340,7 +340,7 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
           images: 0,
           documents: 0,
           videos: 0,
-          credits: 10000, // 默认给新用户10000积分
+          credits: 0, // 免费会员初始积分为0
           // 免费额度使用情况
           free_conversations_used: 0,
           free_images_used: 0,
@@ -388,7 +388,7 @@ export const UserActivityProvider: React.FC<{ children: ReactNode }> = ({ childr
           images: 0,
           documents: 0,
           videos: 0,
-          credits: 10000,
+          credits: 0,
           free_conversations_used: 0,
           free_images_used: 0,
           free_documents_used: 0,
