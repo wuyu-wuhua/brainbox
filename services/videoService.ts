@@ -638,14 +638,9 @@ export const videoService = {
       
       const size = resolutionMap[aspectRatio] || '1280*720';
 
-      // 增强提示词，加入摄像机运动和速度信息
+      // 🎯 关键修复：增强提示词，加入摄像机运动和速度信息（从API调用传过来的prompt已经包含了增强内容）
+      // 注意：此时prompt已经是增强过的提示词了，但我们仍然需要确保格式正确
       let enhancedPrompt = prompt;
-      if (cameraMovement !== 'static') {
-        enhancedPrompt += `, ${cameraMovement} camera movement`;
-      }
-      if (speed !== 'normal') {
-        enhancedPrompt += `, ${speed} motion`;
-      }
 
       let requestData;
       let apiUrl;
