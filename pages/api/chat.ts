@@ -1,11 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.DASHSCOPE_API_KEY,
-  baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-});
-
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
@@ -15,6 +10,30 @@ export default async function handler(
   }
 
   try {
+    const apiKey = process.env.DASHSCOPE_API_KEY;
+    console.log('当前使用的API密钥前缀:', apiKey?.substring(0, 8));
+
+    if (!apiKey) {
+      console.error('环境变量 DASHSCOPE_API_KEY 未设置');
+      return res.status(500).json({ error: 'API密钥未配置' });
+    }
+
+    // 在每次请求时创建新的OpenAI实例
+    const openai = new OpenAI({
+      apiKey,
+      baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+    });
+
+    // 添加更详细的调试日志
+    console.log('完整环境变量信息:', {
+      NODE_ENV: process.env.NODE_ENV,
+      DASHSCOPE_API_KEY: process.env.DASHSCOPE_API_KEY,
+      NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+      NEXT_RUNTIME: process.env.NEXT_RUNTIME,
+      PWD: process.env.PWD,
+      PATH: process.env.PATH?.split(';')[0] // 只显示第一个路径
+    });
+
     const { messages, model = 'DeepSeek-R1-0528', stream = false } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
