@@ -87,8 +87,17 @@ import { ChatHistory } from '../types/chat';
 import { useRouter } from 'next/router';
 import { videoService, getVideoState, saveVideoState, clearVideoState, isVideoStateExpired, VideoGenerationState } from '../services/videoService';
 
-const StylePreview = ({ style, isSelected }) => {
-  const videoRef = useRef(null);
+interface StylePreviewProps {
+  style: {
+    image: string;
+    label: string;
+    description: string;
+  };
+  isSelected: boolean;
+}
+
+const StylePreview: React.FC<StylePreviewProps> = ({ style, isSelected }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (videoRef.current) {
@@ -115,7 +124,7 @@ const StylePreview = ({ style, isSelected }) => {
       }}
     >
       <AspectRatio ratio={4/3}>
-        <Box position="relative">
+        <Box position="relative" bg="gray.100" _dark={{ bg: "gray.700" }}>
           <video
             ref={videoRef}
             src={style.image}
@@ -140,7 +149,7 @@ const StylePreview = ({ style, isSelected }) => {
               p={1}
               zIndex={1}
             >
-              <Icon as={FiVideo} size="12px" color="white" />
+              <Icon as={FiVideo} boxSize="12px" color="white" />
             </Box>
           )}
         </Box>
@@ -1148,7 +1157,7 @@ export default function Video() {
         }
       }
     }, [modelType]);
-
+    
     // 对话消息状态 - 从localStorage恢复
     const [gen3Messages, setGen3Messages] = useState<Array<{
       content: string;
@@ -1188,10 +1197,25 @@ export default function Video() {
           gen3ReferenceImage,
           gen3VideoStyle,
           gen3Messages,
+          currentTaskId: gen3IsGenerating ? (gen3Messages.length > 0 && gen3Messages[gen3Messages.length - 1]?.metadata?.taskId) : null,
           timestamp: Date.now()
         };
         localStorage.setItem('gen3_state_backup', JSON.stringify(state));
         localStorage.setItem('gen3_messages_backup', JSON.stringify(gen3Messages));
+        
+        // 🎯 关键修复：额外保存一个简化的快速状态，用于快速检查
+        if (gen3IsGenerating) {
+          const quickState = {
+            isGenerating: true,
+            progress: gen3Progress,
+            taskId: state.currentTaskId,
+            timestamp: Date.now()
+          };
+          localStorage.setItem('gen3_quick_state', JSON.stringify(quickState));
+        } else {
+          localStorage.removeItem('gen3_quick_state');
+        }
+        
         console.log('🔄 已保存Gen3状态:', state);
       }
     };
@@ -1219,6 +1243,17 @@ export default function Video() {
               if (state.gen3Messages && state.gen3Messages.length > 0) {
                 setGen3Messages(state.gen3Messages);
               }
+              
+              // 🎯 关键修复：如果有正在生成的任务，继续轮询
+              if (state.gen3IsGenerating && state.currentTaskId) {
+                console.log('🔄 检测到正在生成的任务，继续轮询状态:', state.currentTaskId);
+                // 继续轮询状态
+                setTimeout(() => {
+                  // 这里可以添加轮询逻辑，但需要确保有taskId
+                  setGen3IsGenerating(true);
+                  setGen3Progress(state.gen3Progress || 20);
+                }, 1000);
+              }
             } else {
               localStorage.removeItem('gen3_state_backup');
             }
@@ -1240,24 +1275,54 @@ export default function Video() {
     }
   }, [gen3Messages]);
 
-  // 🎯 页面初始化时恢复状态
+  // 🎯 关键修复：页面初始化时总是检查并恢复生成状态
   const isFirstLoadRef = useRef(true);
   useEffect(() => {
     if (isFirstLoadRef.current) {
       isFirstLoadRef.current = false;
+      console.log('🔄 页面初始化，检查生成状态...');
       
-      // 首先检查是否有pending的视频历史记录
-      const pendingVideoHistory = sessionStorage.getItem('pendingVideoHistory');
-      if (pendingVideoHistory) {
-        // 如果有pending历史记录，交给主页面的restorePageState处理
-        console.log('检测到pending视频历史记录，跳过普通状态恢复');
-        return;
-      }
+      // 🎯 关键修复：无论什么情况都要检查生成状态
+      const checkAndRestoreGeneratingState = () => {
+        try {
+          const savedState = localStorage.getItem('gen3_state_backup');
+          if (savedState) {
+            const state = JSON.parse(savedState);
+            const isStateValid = state.timestamp && (Date.now() - state.timestamp) < 3600000; // 1小时
+            
+            // 🎯 关键修复：如果有正在生成的状态，立即恢复（但清空历史显示）
+            if (isStateValid && state.gen3IsGenerating) {
+              console.log('🔄 检测到正在生成的状态，立即恢复:', state);
+              setGen3IsGenerating(true);
+              setGen3Progress(state.gen3Progress || 20);
+              
+              // 🎯 关键修复：恢复生成参数，但不恢复历史消息和生成好的视频
+              setGen3Prompt(state.gen3Prompt || '');
+              setGen3AspectRatio(state.gen3AspectRatio || '16:9');
+              setGen3CameraMovement(state.gen3CameraMovement || 'static');
+              setGen3Speed(state.gen3Speed || 'normal');
+              setGen3Lighting(state.gen3Lighting || 'natural');
+              setGen3ReferenceImage(state.gen3ReferenceImage || null);
+              setGen3VideoStyle(state.gen3VideoStyle || 'realistic');
+              
+              // 🎯 关键修复：清空历史显示，确保只显示生成进度条
+              setGen3Messages([]);
+              setGen3GeneratedVideo(null);
+              
+              console.log('✅ 生成状态已恢复，进度:', state.gen3Progress || 20, '(清空历史显示)');
+              return;
+            }
+          }
+          
+          // 如果没有生成状态，正常恢复其他状态
+          restoreGen3State();
+        } catch (error) {
+          console.error('检查生成状态失败:', error);
+          restoreGen3State();
+        }
+      };
       
-      // 普通的状态恢复
-      if (gen3Messages.length === 0) {
-        restoreGen3State();
-      }
+      checkAndRestoreGeneratingState();
     }
     // 只在首次加载时执行
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1280,6 +1345,55 @@ export default function Video() {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         saveGen3State();
+      } else if (document.visibilityState === 'visible') {
+        // 🎯 关键修复：页面重新可见时强制检查生成状态
+        console.log('🔄 页面重新可见，强制检查生成状态');
+        setTimeout(() => {
+          if (modelType === 'gen3') {
+            try {
+              // 🎯 优先检查快速状态
+              const quickState = localStorage.getItem('gen3_quick_state');
+              if (quickState) {
+                const state = JSON.parse(quickState);
+                const isStateValid = state.timestamp && (Date.now() - state.timestamp) < 3600000;
+                
+                if (isStateValid && state.isGenerating && !gen3IsGenerating) {
+                  console.log('🔄 快速恢复生成状态:', state);
+                  setGen3IsGenerating(true);
+                  setGen3Progress(state.progress || 20);
+                  
+                  // 🎯 关键修复：清空当前对话，确保不显示历史记录
+                  setGen3Messages([]);
+                  setGen3GeneratedVideo(null);
+                  
+                  console.log('✅ 快速恢复完成，清空历史显示');
+                  return;
+                }
+              }
+              
+              const savedState = localStorage.getItem('gen3_state_backup');
+              if (savedState) {
+                const state = JSON.parse(savedState);
+                const isStateValid = state.timestamp && (Date.now() - state.timestamp) < 3600000;
+                
+                // 🎯 关键修复：如果有正在生成的状态，强制恢复（但不恢复历史消息）
+                if (isStateValid && state.gen3IsGenerating && !gen3IsGenerating) {
+                  console.log('🔄 强制恢复生成状态:', state);
+                  setGen3IsGenerating(true);
+                  setGen3Progress(state.gen3Progress || 20);
+                  
+                  // 🎯 关键修复：清空当前对话，确保不显示历史记录
+                  setGen3Messages([]);
+                  setGen3GeneratedVideo(null);
+                  
+                  console.log('✅ 页面可见性恢复完成，清空历史显示');
+                }
+              }
+            } catch (error) {
+              console.error('强制恢复状态失败:', error);
+            }
+          }
+        }, 100); // 小延迟确保页面完全恢复
       }
     };
 
@@ -1298,8 +1412,38 @@ export default function Video() {
   useEffect(() => {
     const { loadHistory, modelType } = router.query;
     
-    const restoreHistory = async () => {
-      // 只在明确有历史记录需要恢复时才处理
+      const restoreHistory = async () => {
+      // 🎯 关键修复：优先检查是否有正在生成的状态，如果有则阻止历史记录恢复
+      const savedState = localStorage.getItem('gen3_state_backup');
+      const quickState = localStorage.getItem('gen3_quick_state');
+      
+      if (savedState) {
+        try {
+          const state = JSON.parse(savedState);
+          const isStateValid = state.timestamp && (Date.now() - state.timestamp) < 3600000;
+          if (isStateValid && state.gen3IsGenerating) {
+            console.log('🚫 检测到正在生成状态，阻止历史记录恢复');
+            return; // 直接返回，不恢复历史记录
+          }
+        } catch (e) {
+          console.warn('检查生成状态失败:', e);
+        }
+      }
+      
+      if (quickState) {
+        try {
+          const state = JSON.parse(quickState);
+          const isStateValid = state.timestamp && (Date.now() - state.timestamp) < 3600000;
+          if (isStateValid && state.isGenerating) {
+            console.log('🚫 快速状态显示正在生成，阻止历史记录恢复');
+            return; // 直接返回，不恢复历史记录
+          }
+        } catch (e) {
+          console.warn('检查快速状态失败:', e);
+        }
+      }
+      
+      // 只在明确有历史记录需要恢复时才处理，且没有正在生成的状态
       if (loadHistory && typeof loadHistory === 'string') {
         const histories = await getHistories();
         const targetHistory = histories.find(h => h.id === loadHistory);
@@ -1308,8 +1452,8 @@ export default function Video() {
           if ((targetHistory.model && targetHistory.model.includes('Google Veo 3')) || modelType === 'gen3') {
             setModelType('gen3'); // 自动切换到gen3
             console.log('恢复DashScope历史记录:', targetHistory);
-            // 恢复对话消息
-            if (targetHistory.messages && targetHistory.messages.length > 0) {
+          // 恢复对话消息
+          if (targetHistory.messages && targetHistory.messages.length > 0) {
               // 优先补全videoUrl
               let videoUrl = (targetHistory.messages[1] as any)?.videoUrl;
               if (!videoUrl && targetHistory.messages[1]?.metadata?.videoUrl) {
@@ -1324,15 +1468,15 @@ export default function Video() {
               );
               setGen3Messages(patchedMessages);
               if (videoUrl) setGen3GeneratedVideo(videoUrl);
-            }
-            // 恢复参数
-            if (targetHistory.messages.length > 1 && targetHistory.messages[1].metadata) {
-              const metadata = targetHistory.messages[1].metadata as any;
-              if (metadata.aspectRatio) setGen3AspectRatio(metadata.aspectRatio);
-              if (metadata.cameraMovement) setGen3CameraMovement(metadata.cameraMovement);
-              if (metadata.speed) setGen3Speed(metadata.speed);
-              if (metadata.lighting) setGen3Lighting(metadata.lighting);
-            }
+          }
+          // 恢复参数
+          if (targetHistory.messages.length > 1 && targetHistory.messages[1].metadata) {
+            const metadata = targetHistory.messages[1].metadata as any;
+            if (metadata.aspectRatio) setGen3AspectRatio(metadata.aspectRatio);
+            if (metadata.cameraMovement) setGen3CameraMovement(metadata.cameraMovement);
+            if (metadata.speed) setGen3Speed(metadata.speed);
+            if (metadata.lighting) setGen3Lighting(metadata.lighting);
+          }
           } else if (targetHistory.model && targetHistory.model.startsWith('图生视频')) {
             setModelType('regular');
             setMode('img2video');
@@ -1346,38 +1490,74 @@ export default function Video() {
             setModelType('regular');
             restoreVideoFromHistory(targetHistory);
           }
+          }
         }
-      }
-    };
-    restoreHistory();
+      };
+      restoreHistory();
   }, [router.query?.loadHistory, router.query?.modelType]);
 
-  // 🎯 模式切换恢复逻辑：当切换到Gen3模式时，确保显示对话记录
-  // useEffect(() => {
-  //   // 保存当前模型类型到localStorage
-  //   if (typeof window !== 'undefined') {
-  //     localStorage.setItem('video_model_type', modelType);
-  //   }
-  //   
-  //   if (modelType === 'gen3') {
-  //     console.log('🔄 切换到Gen3模式，当前消息数:', gen3Messages.length);
-  //     // 如果当前没有消息但localStorage中有备份，则恢复
-  //     if (gen3Messages.length === 0 && typeof window !== 'undefined') {
-  //       try {
-  //         const backup = localStorage.getItem('gen3_messages_backup');
-  //         if (backup) {
-  //           const parsedMessages = JSON.parse(backup);
-  //           if (parsedMessages.length > 0) {
-  //             console.log('🔄 从备份恢复Gen3消息:', parsedMessages.length, '条');
-  //             setGen3Messages(parsedMessages);
-  //           }
-  //         }
-  //       } catch (e) {
-  //         console.warn('备份恢复失败:', e);
-  //       }
-  //     }
-  //   }
-  // }, [modelType]);
+  // 🎯 关键修复：模型切换到Gen3时，立即检查并恢复生成状态
+  useEffect(() => {
+    // 保存当前模型类型到localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('video_model_type', modelType);
+    }
+    
+    if (modelType === 'gen3') {
+      console.log('🔄 切换到Gen3模式，检查生成状态...');
+      
+      // 🎯 关键修复：立即检查是否有正在生成的状态
+      setTimeout(() => {
+        try {
+          const savedState = localStorage.getItem('gen3_state_backup');
+          if (savedState) {
+            const state = JSON.parse(savedState);
+            const isStateValid = state.timestamp && (Date.now() - state.timestamp) < 3600000;
+            
+            // 如果有正在生成的状态且当前不在生成中，立即恢复（但清空历史显示）
+            if (isStateValid && state.gen3IsGenerating && !gen3IsGenerating) {
+              console.log('🔄 模型切换时发现生成状态，立即恢复:', state);
+              setGen3IsGenerating(true);
+              setGen3Progress(state.gen3Progress || 20);
+              
+              // 🎯 关键修复：恢复生成参数，但不恢复历史消息和生成好的视频
+              setGen3Prompt(state.gen3Prompt || '');
+              setGen3AspectRatio(state.gen3AspectRatio || '16:9');
+              setGen3CameraMovement(state.gen3CameraMovement || 'static');
+              setGen3Speed(state.gen3Speed || 'normal');
+              setGen3Lighting(state.gen3Lighting || 'natural');
+              setGen3ReferenceImage(state.gen3ReferenceImage || null);
+              setGen3VideoStyle(state.gen3VideoStyle || 'realistic');
+              
+              // 🎯 关键修复：清空历史显示，确保只显示生成进度条
+              setGen3Messages([]);
+              setGen3GeneratedVideo(null);
+              
+              console.log('✅ 模型切换时生成状态已恢复，清空历史显示');
+              return;
+            }
+          }
+          
+          // 🎯 关键修复：只有在没有正在生成的状态时，才恢复历史消息
+          const isCurrentlyGenerating = localStorage.getItem('gen3_quick_state');
+          if (!isCurrentlyGenerating) {
+            const backup = localStorage.getItem('gen3_messages_backup');
+            if (backup && gen3Messages.length === 0) {
+              const parsedMessages = JSON.parse(backup);
+              if (parsedMessages.length > 0) {
+                console.log('🔄 从备份恢复Gen3消息:', parsedMessages.length, '条');
+                setGen3Messages(parsedMessages);
+              }
+            }
+          } else {
+            console.log('🚫 检测到正在生成，不恢复历史消息');
+          }
+        } catch (e) {
+          console.warn('模型切换时状态恢复失败:', e);
+        }
+      }, 100); // 小延迟确保状态已设置
+    }
+  }, [modelType]);
   
   // 🔒 防止在生成过程中页面被意外重置
   useEffect(() => {
@@ -1396,6 +1576,100 @@ export default function Video() {
       };
     }
   }, [gen3IsGenerating]);
+
+  // 🎯 关键修复：定期检查机制，确保生成状态不会丢失
+  useEffect(() => {
+    if (modelType === 'gen3') {
+      const checkInterval = setInterval(() => {
+        try {
+          // 🎯 优先检查快速状态，提高响应速度
+          const quickState = localStorage.getItem('gen3_quick_state');
+          const savedState = localStorage.getItem('gen3_state_backup');
+          
+          if (quickState) {
+            const state = JSON.parse(quickState);
+            const isStateValid = state.timestamp && (Date.now() - state.timestamp) < 3600000;
+            
+            // 🎯 如果快速状态显示正在生成，立即恢复
+            if (isStateValid && state.isGenerating && !gen3IsGenerating) {
+              console.log('🔄 快速检查发现生成状态丢失，立即恢复:', state);
+              setGen3IsGenerating(true);
+              setGen3Progress(state.progress || 20);
+              
+              // 🎯 关键修复：清空历史显示，确保只显示生成进度条
+              setGen3Messages([]);
+              setGen3GeneratedVideo(null);
+              
+              return; // 快速恢复后跳出
+            }
+          }
+          
+          if (savedState) {
+            const state = JSON.parse(savedState);
+            const isStateValid = state.timestamp && (Date.now() - state.timestamp) < 3600000;
+            
+            // 🎯 关键修复：如果localStorage显示正在生成，但页面状态不是，立即同步（清空历史显示）
+            if (isStateValid && state.gen3IsGenerating && !gen3IsGenerating) {
+              console.log('🔄 定期检查发现状态不同步，立即修复:', state);
+              setGen3IsGenerating(true);
+              setGen3Progress(state.gen3Progress || 20);
+              
+              // 🎯 关键修复：清空历史显示，确保只显示生成进度条
+              setGen3Messages([]);
+              setGen3GeneratedVideo(null);
+              
+              console.log('✅ 定期检查已修复生成状态，清空历史显示');
+            }
+          }
+        } catch (error) {
+          console.warn('定期检查失败:', error);
+        }
+      }, 1500); // 🎯 缩短到1.5秒检查一次，提高响应速度
+      
+      return () => {
+        clearInterval(checkInterval);
+      };
+    }
+  }, [modelType, gen3IsGenerating]);
+
+  // 🎯 关键修复：路由变化时也要检查生成状态
+  useEffect(() => {
+    const handleRouteChangeComplete = () => {
+      console.log('🔄 路由变化完成，检查生成状态...');
+      setTimeout(() => {
+        try {
+          const savedState = localStorage.getItem('gen3_state_backup');
+          if (savedState) {
+            const state = JSON.parse(savedState);
+            const isStateValid = state.timestamp && (Date.now() - state.timestamp) < 3600000;
+            
+            // 🎯 关键修复：使用回调函数避免依赖，清空历史显示
+            setGen3IsGenerating(currentGenerating => {
+              if (isStateValid && state.gen3IsGenerating && !currentGenerating) {
+                console.log('🔄 路由变化后发现生成状态，立即恢复:', state);
+                setGen3Progress(state.gen3Progress || 20);
+                
+                // 🎯 关键修复：清空历史显示，确保只显示生成进度条
+                setGen3Messages([]);
+                setGen3GeneratedVideo(null);
+                
+                console.log('✅ 路由变化后生成状态已恢复，清空历史显示');
+                return true;
+              }
+              return currentGenerating;
+            });
+          }
+        } catch (error) {
+          console.warn('路由变化后状态检查失败:', error);
+        }
+      }, 200);
+    };
+
+    router.events.on('routeChangeComplete', handleRouteChangeComplete);
+    return () => {
+      router.events.off('routeChangeComplete', handleRouteChangeComplete);
+    };
+  }, [router.events]);
     
     // 强制更新状态，用于确保UI重新渲染
     const [forceUpdateCount, setForceUpdateCount] = useState(0);
@@ -1727,8 +2001,6 @@ export default function Video() {
         });
         return;
       }
-
-      // 检查免费额度
       if (checkFreeQuotaExceeded('video')) {
         toast({
           title: t('common.freeQuotaExceeded'),
@@ -1739,12 +2011,9 @@ export default function Video() {
         });
         return;
       }
-
-      // 确保页面处于DashScope模式
       if (modelType !== 'gen3') {
         setModelType('gen3');
       }
-      
       if (!gen3Prompt.trim()) {
         toast({
           title: '请输入视频提示词',
@@ -1753,11 +2022,10 @@ export default function Video() {
         });
         return;
       }
-
       setGen3IsGenerating(true);
       setGen3Progress(0);
-
-      // 生成前清空对话，只保留本次新发的用户消息
+      setGen3GeneratedVideo(null);
+      // 只push用户消息，不清空历史
       const userPrompt = gen3Prompt;
       setGen3Prompt('');
       const userMessage = {
@@ -1772,8 +2040,8 @@ export default function Video() {
           videoStyle: gen3VideoStyle
         }
       };
-      // 先只保留用户消息
-      setGen3Messages([userMessage]);
+      setGen3Messages(prev => [...prev, userMessage]);
+      // ... existing code ...
 
       try {
         // 构建增强的提示词
@@ -1830,9 +2098,9 @@ export default function Video() {
               
               if (taskStatus === 'SUCCEEDED' && videoUrl) {
                 // 视频生成完成
-                // 创建AI回复消息
+                // 创建AI回复消息，包含视频链接内容（与文生视频格式保持一致）
                 const aiMessage = {
-                  content: '',
+                  content: `生成的视频：${videoUrl}\n视频链接: ${videoUrl}`,
                   isUser: false,
                   timestamp: new Date().toISOString(),
                   videoUrl: videoUrl,
@@ -1939,9 +2207,9 @@ export default function Video() {
         } else if (data.success && data.videoUrl) {
           // 直接返回结果模式
           
-          // 创建AI回复消息
+          // 创建AI回复消息，包含视频链接内容（与文生视频格式保持一致）
           const aiMessage = {
-            content: '',
+            content: `生成的视频：${data.videoUrl}\n视频链接: ${data.videoUrl}`,
             isUser: false,
             timestamp: new Date().toISOString(),
             videoUrl: data.videoUrl,
@@ -2203,7 +2471,8 @@ export default function Video() {
                     )}
 
                     {/* 历史对话消息 */}
-                    {gen3Messages.map((message, index) => (
+                    {/* 🎯 关键修复：正在生成时不显示任何历史对话消息 */}
+                    {!gen3IsGenerating && gen3Messages.map((message, index) => (
                         <Box key={index}>
                           {message.isUser ? (
                           // 用户消息
@@ -2291,13 +2560,17 @@ export default function Video() {
                               border="1px solid"
                               borderColor={useColorModeValue('gray.200', 'gray.600')}
                               position="relative"
-                              maxW={message.videoUrl ? (message.metadata?.aspectRatio === '9:16' ? '240px' : message.metadata?.aspectRatio === '1:1' ? '300px' : message.metadata?.aspectRatio === '4:3' ? '350px' : '400px') : '480px'}
+                              maxW={message.videoUrl || (index === 1 && gen3GeneratedVideo) ? (message.metadata?.aspectRatio === '9:16' ? '240px' : message.metadata?.aspectRatio === '1:1' ? '300px' : message.metadata?.aspectRatio === '4:3' ? '350px' : '400px') : '480px'}
                               minW="120px"
                               w="auto"
                             >
                               <VStack spacing={3} align="start">
-                                <Text fontSize="sm" whiteSpace="pre-line">{message.content}</Text>
-                                {message.videoUrl && (
+                                {/* 🎯 关键修复：当有视频时，隐藏包含视频链接的文字内容 */}
+                                {!(message.videoUrl || (index === 1 && gen3GeneratedVideo)) && (
+                                  <Text fontSize="sm" whiteSpace="pre-line">{message.content}</Text>
+                                )}
+                                {/* 修复：历史还原时也能展示视频 */}
+                                {(message.videoUrl || (index === 1 && gen3GeneratedVideo)) && (
                                   <Box 
                                     borderRadius="lg" 
                                     overflow="hidden" 
@@ -2311,7 +2584,7 @@ export default function Video() {
                                           message.metadata?.aspectRatio === '4:3' ? '300px' : '350px'}
                                   >
                                     <video
-                                      src={message.videoUrl}
+                                      src={message.videoUrl || (index === 1 && gen3GeneratedVideo) ? (message.videoUrl || gen3GeneratedVideo) : undefined}
                                       controls
                                       style={{
                                         width: '100%',
@@ -2319,9 +2592,11 @@ export default function Video() {
                                         borderRadius: '8px'
                                       }}
                                     />
+                                    {/* 🎯 修复：移除视频链接文字显示，保持界面简洁 */}
                                   </Box>
                                 )}
                                 <HStack spacing={2}>
+                                  {(message.videoUrl || (index === 1 && gen3GeneratedVideo)) && (
                                   <Button
                                     size="xs"
                                     leftIcon={<FiDownload />}
@@ -2330,20 +2605,21 @@ export default function Video() {
                                     onClick={() => {
                                       // 下载当前视频
                                       const link = document.createElement('a');
-                                      link.href = message.videoUrl;
+                                        link.href = message.videoUrl || gen3GeneratedVideo;
                                       link.download = `google-veo3-video-${Date.now()}.mp4`;
                                       link.click();
                                     }}
                                   >
                                     下载
                                   </Button>
+                                  )}
                                   <Button
                                     size="xs"
                                     leftIcon={favorites.some(fav => 
-                                      fav.type === 'video' && fav.description.includes(message.videoUrl)
+                                      fav.type === 'video' && fav.description.includes(message.videoUrl || gen3GeneratedVideo || '')
                                     ) ? <AiFillHeart /> : <AiOutlineHeart />}
                                     colorScheme={favorites.some(fav => 
-                                      fav.type === 'video' && fav.description.includes(message.videoUrl)
+                                      fav.type === 'video' && fav.description.includes(message.videoUrl || gen3GeneratedVideo || '')
                                     ) ? "red" : "gray"}
                                     variant="outline"
                                     onClick={async () => {
@@ -2352,14 +2628,13 @@ export default function Video() {
                                         onLoginOpen();
                                         return;
                                       }
-                                      
+                                      const videoUrlToFav = message.videoUrl || gen3GeneratedVideo;
                                       const isCurrentlyFavorited = favorites.some(fav => 
-                                        fav.type === 'video' && fav.description.includes(message.videoUrl)
+                                        fav.type === 'video' && fav.description.includes(videoUrlToFav)
                                       );
-                                      
                                       if (isCurrentlyFavorited) {
                                         const favoriteItem = favorites.find(fav => 
-                                          fav.type === 'video' && fav.description.includes(message.videoUrl)
+                                          fav.type === 'video' && fav.description.includes(videoUrlToFav)
                                         );
                                         if (favoriteItem) {
                                           await removeFavorite(favoriteItem.id);
@@ -2373,7 +2648,7 @@ export default function Video() {
                                         await addFavorite({
                                           type: 'video',
                                           title: `Google Veo 3 视频 - ${message.metadata?.aspectRatio || '16:9'}`,
-                                          description: `视频链接: ${message.videoUrl}\n\n提示词：${message.content}`
+                                          description: `视频链接: ${videoUrlToFav}\n\n提示词：${message.content}`
                                         });
                                         toast({
                                           title: '已添加到收藏',
@@ -2384,7 +2659,7 @@ export default function Video() {
                                     }}
                                   >
                                     {favorites.some(fav => 
-                                      fav.type === 'video' && fav.description.includes(message.videoUrl)
+                                      fav.type === 'video' && fav.description.includes(message.videoUrl || gen3GeneratedVideo || '')
                                     ) ? "已收藏" : "收藏"}
                                   </Button>
                                 </HStack>
@@ -2815,7 +3090,17 @@ export default function Video() {
   // 保存视频状态到本地存储和历史记录
   const saveVideoToHistory = async (videoUrl: string, taskId: string, type: 'text2video' | 'img2video' = 'text2video', currentPrompt: string = '') => {
     try {
-      // 保存到历史记录
+      // 构造AI回复消息内容，完全对齐目标格式
+      const aiContent = `生成的视频：${videoUrl}\n视频链接: ${videoUrl}`;
+      const aiMetadata = {
+        mode: type, // 兼容你给的mode字段
+        taskId: taskId,
+        duration: duration,
+        videoStyle: videoStyle,
+        aspectRatio: aspectRatio,
+        motionStrength: null, // 可根据实际情况补充
+        referenceImage: type === 'img2video' ? referenceImage : null
+      };
       const history = {
         type: 'video',
         model: modelType === 'gen3' ? 'Google Veo 3' : 'DashScope',
@@ -2826,17 +3111,11 @@ export default function Video() {
             timestamp: new Date().toISOString()
           },
           {
-            content: videoUrl,
+            content: aiContent,
+            videoUrl: videoUrl,
             isUser: false,
             timestamp: new Date().toISOString(),
-            metadata: {
-              taskId,
-              type,
-              referenceImage: type === 'img2video' ? referenceImage : null,
-              style: videoStyle,
-              aspectRatio,
-              duration
-            }
+            metadata: aiMetadata
           }
         ]
       };
@@ -3055,12 +3334,12 @@ export default function Video() {
           width="100%"
           height="400px"
           bg="gray.100"
-          _dark={{ bg: 'gray.700' }}
           borderRadius="lg"
           display="flex"
           flexDirection="column"
           justifyContent="center"
           alignItems="center"
+          _dark={{ bg: 'gray.700' }}
         >
           <VStack spacing={4}>
             <Spinner size="xl" color="purple.500" />
@@ -3078,9 +3357,20 @@ export default function Video() {
     }
 
     if (generatedVideo) {
+      // 🎯 关键修复：根据用户选择的尺寸动态调整预览框比例
+      const getAspectRatio = () => {
+        switch (aspectRatio) {
+          case '16:9': return 16/9;
+          case '9:16': return 9/16;
+          case '1:1': return 1;
+          case '4:3': return 4/3;
+          default: return 16/9;
+        }
+      };
+      
       return (
         <Box position="relative" width="100%">
-          <AspectRatio ratio={16/9}>
+          <AspectRatio ratio={getAspectRatio()}>
             <video
               src={generatedVideo}
               controls
@@ -3095,18 +3385,39 @@ export default function Video() {
       );
     }
 
+    // 🎯 关键修复：根据用户选择的尺寸显示预览框
+    const getAspectRatio = () => {
+      switch (aspectRatio) {
+        case '16:9': return 16/9;
+        case '9:16': return 9/16;
+        case '1:1': return 1;
+        case '4:3': return 4/3;
+        default: return 16/9;
+      }
+    };
+
     return (
-      <Box
-        width="100%"
-        height="400px"
-        bg="gray.100"
-        _dark={{ bg: 'gray.700' }}
-        borderRadius="lg"
-        display="flex"
-        justifyContent="center"
-        alignItems="center"
-      >
-        <Text color="gray.500">视频预览区域</Text>
+      <Box position="relative" width="100%">
+        <AspectRatio ratio={getAspectRatio()}>
+          <Box
+            bg="gray.100"
+            borderRadius="lg"
+            display="flex"
+            justifyContent="center"
+            alignItems="center"
+            border="2px dashed"
+            borderColor="gray.300"
+            _dark={{ 
+              bg: 'gray.700',
+              borderColor: 'gray.600' 
+            }}
+          >
+            <VStack spacing={2}>
+              <Text color="gray.500" fontSize="lg">视频预览区域</Text>
+              <Text color="gray.400" fontSize="sm">{aspectRatio} 比例</Text>
+            </VStack>
+          </Box>
+        </AspectRatio>
       </Box>
     );
   };
@@ -3183,6 +3494,8 @@ export default function Video() {
       localStorage.setItem('video_model_type', 'gen3');
     }
   }, [router.query.modelType]);
+
+
 
   return (
     <Box w="100%" maxW="100vw" overflow="hidden">
