@@ -2001,6 +2001,8 @@ export default function Video() {
         });
         return;
       }
+
+      // 检查免费额度
       if (checkFreeQuotaExceeded('video')) {
         toast({
           title: t('common.freeQuotaExceeded'),
@@ -2011,9 +2013,12 @@ export default function Video() {
         });
         return;
       }
+
+      // 确保页面处于DashScope模式
       if (modelType !== 'gen3') {
         setModelType('gen3');
       }
+      
       if (!gen3Prompt.trim()) {
         toast({
           title: '请输入视频提示词',
@@ -2022,10 +2027,15 @@ export default function Video() {
         });
         return;
       }
+
       setGen3IsGenerating(true);
       setGen3Progress(0);
+
+      // 🎯 关键修复：生成开始时立即清空所有历史显示
       setGen3GeneratedVideo(null);
-      // 只push用户消息，不清空历史
+      setGen3Messages([]);
+
+      // 生成前清空对话，只保留本次新发的用户消息
       const userPrompt = gen3Prompt;
       setGen3Prompt('');
       const userMessage = {
@@ -2040,8 +2050,8 @@ export default function Video() {
           videoStyle: gen3VideoStyle
         }
       };
-      setGen3Messages(prev => [...prev, userMessage]);
-      // ... existing code ...
+      // 先只保留用户消息
+      setGen3Messages([userMessage]);
 
       try {
         // 构建增强的提示词
